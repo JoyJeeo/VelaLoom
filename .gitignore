@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local robot recordings and macOS metadata
+/rosbag/
+._*
+.DS_Store
