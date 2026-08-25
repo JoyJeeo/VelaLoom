@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rewrite camera image frame_ids and connect camera TF trees in a ROS1 bag.
+"""Rewrite camera image/camera-info frame_ids and connect camera TF trees in a ROS1 bag.
 
 This script uses the pure-Python ``rosbags`` package, so a ROS installation is
 not required. The input bag is never modified; a new ROS1 bag is written.
@@ -15,10 +15,13 @@ from rosbags.highlevel import AnyReader
 from rosbags.rosbag1 import Writer
 
 
-IMAGE_FRAME_REMAP = {
+FRAME_REMAP = {
     "/cam_r/color/image_raw/compressed": "r_d405_camera_base",
+    "/cam_r/color/camera_info": "r_d405_camera_base",
     "/cam_h/color/image_raw/compressed": "camera_base",
+    "/cam_h/color/camera_info": "camera_base",
     "/cam_l/color/image_raw/compressed": "l_d405_camera_base",
+    "/cam_l/color/camera_info": "l_d405_camera_base",
 }
 
 
@@ -113,7 +116,7 @@ def copy_and_modify(input_bag: Path, output_bag: Path):
     if output_bag.exists():
         raise FileExistsError(f"Refusing to overwrite existing output: {output_bag}")
     output_bag.parent.mkdir(parents=True, exist_ok=True)
-    image_counts = {topic: 0 for topic in IMAGE_FRAME_REMAP}
+    frame_counts = {topic: 0 for topic in FRAME_REMAP}
     static_transforms_added = 0
 
     with AnyReader([input_bag]) as reader, Writer(output_bag) as writer:
@@ -134,11 +137,11 @@ def copy_and_modify(input_bag: Path, output_bag: Path):
 
         for source, timestamp, rawdata in reader.messages():
             outdata = rawdata
-            if source.topic in IMAGE_FRAME_REMAP:
+            if source.topic in FRAME_REMAP:
                 message = reader.deserialize(rawdata, source.msgtype)
-                message.header.frame_id = IMAGE_FRAME_REMAP[source.topic]
+                message.header.frame_id = FRAME_REMAP[source.topic]
                 outdata = typestore.serialize_ros1(message, source.msgtype)
-                image_counts[source.topic] += 1
+                frame_counts[source.topic] += 1
             elif source.topic == "/tf_static":
                 message = reader.deserialize(rawdata, source.msgtype)
                 added = append_alias_transforms(message, timestamp, typestore, Time)
@@ -146,7 +149,7 @@ def copy_and_modify(input_bag: Path, output_bag: Path):
                     static_transforms_added += added
                     outdata = typestore.serialize_ros1(message, source.msgtype)
             writer.write(connection_map[source.id], timestamp, outdata)
-    return image_counts, static_transforms_added
+    return frame_counts, static_transforms_added
 
 
 def main() -> None:
