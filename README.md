@@ -6,6 +6,11 @@
 
 一个机器人数据流水线工具集，将原始多模态数据编织、转换为结构化、标准化的数据集。
 
+## AI 开发规范
+
+面向 AI 开发助手的项目上下文、任务流程、架构设计和进展记录位于 [`.ai/`](.ai/README.md)。
+AI 开始接收开发任务前应先阅读该目录入口文档。
+
 ## Foxglove 中查看 Kuavo URDF
 
 仓库中的 `urdf/biped_s300053.urdf` 是从原始 `kuavo_assets` 包导出的模型，网格路径仍然指向
@@ -39,3 +44,28 @@ python3 scripts/modify_rosbag_camera_frames.py \
 
 该转换同时统一彩色图像和 `camera_info` 的 `frame_id`，并补充左右手相机、头部相机到机器人
 TF 树的静态连接。
+
+## 批量统一 rosbag 的 frame_id
+
+`scripts/sync_frameid.py` 可以按完整 topic 名称修改消息的 `header.frame_id`，支持单个 bag、
+多个 bag、目录批处理和递归扫描。`--input` 可以接收一个或多个文件/目录，`--output` 始终是输出
+目录。输入 bag 不会被修改，多个映射通过重复的 `--map` 参数提供：
+
+```bash
+conda run -n VelaLoom python scripts/sync_frameid.py \
+  --input rosbag/raw/a.bag rosbag/raw/b.bag rosbag/raw/more-bags \
+  --output rosbag/frame-fixed \
+  --recursive \
+  --map /cam_l/color/image_raw/compressed=l_camera_optical_frame \
+  --map /cam_l/color/camera_info=l_camera_optical_frame
+```
+
+默认不会覆盖输出目录中的同名文件；冲突时会生成带 `_loom_YYYYMMDD_HHMMSS` 的文件名。使用
+`--overwrite` 才会覆盖已有输出，使用 `--dry-run` 可以只扫描并查看将要修改的消息数量和输出
+文件名而不写入文件。
+
+批处理行为门禁测试位于 `tests/`，可在项目环境中运行：
+
+```bash
+conda run -n VelaLoom python -m unittest -v tests/test_sync_frameid_batch.py
+```
