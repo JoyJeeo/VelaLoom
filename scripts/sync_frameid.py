@@ -163,8 +163,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output", type=Path, required=True, help="output directory")
     parser.add_argument("--recursive", action="store_true", help="scan input directories recursively")
-    parser.add_argument("--map", dest="mappings", action="append", type=parse_mapping, required=True,
-                        metavar="TOPIC=FRAME_ID", help="exact topic-to-frame mapping; repeatable")
+    parser.add_argument(
+        "--map",
+        dest="mappings",
+        action="append",
+        nargs="+",
+        type=parse_mapping,
+        required=True,
+        metavar="TOPIC=FRAME_ID",
+        help="exact topic-to-frame mapping; accepts multiple values and is repeatable",
+    )
     parser.add_argument("--dry-run", action="store_true", help="scan and report without writing bags")
     parser.add_argument("--overwrite", action="store_true", help="overwrite an existing output file")
     return parser
@@ -174,7 +182,11 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     mappings: dict[str, str] = {}
-    for topic, frame_id in args.mappings:
+    for topic, frame_id in (
+        mapping
+        for mapping_group in args.mappings
+        for mapping in mapping_group
+    ):
         if topic in mappings and mappings[topic] != frame_id:
             parser.error(f"topic mapped to multiple frame_ids: {topic}")
         mappings[topic] = frame_id

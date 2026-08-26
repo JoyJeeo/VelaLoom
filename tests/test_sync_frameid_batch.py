@@ -13,11 +13,11 @@ from tempfile import TemporaryDirectory
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from sync_frameid import main  # noqa: E402
+from sync_frameid import build_parser, main  # noqa: E402
 
 from rosbags.highlevel import AnyReader  # noqa: E402
 from rosbags.rosbag1 import Writer  # noqa: E402
-from rosbags.typesys import Stores, get_typestore  # noqa: E402
+from rosbags.typesys import Stores, get_types_from_msg, get_typestore  # noqa: E402
 
 
 MAPPINGS = ["/cam/a=frame_a", "/cam/b=frame_b"]
@@ -55,6 +55,38 @@ def _create_bag(path: Path, topics: tuple[str, ...] = ("/cam/a", "/cam/b", "/oth
                 writer.write(connections[topic], index * 1_000_000_000, raw)
 
 
+def _create_tf_bag(path: Path) -> None:
+    """Create a TF bag to ensure generic frame rewriting rejects TF safely."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    typestore = get_typestore(Stores.ROS1_NOETIC)
+    message_type = "test_msgs/msg/TFMessage"
+    typestore.register(
+        get_types_from_msg("geometry_msgs/TransformStamped[] transforms", message_type)
+    )
+    Header = typestore.types["std_msgs/msg/Header"]
+    Time = typestore.types["builtin_interfaces/msg/Time"]
+    TransformStamped = typestore.types["geometry_msgs/msg/TransformStamped"]
+    Transform = typestore.types["geometry_msgs/msg/Transform"]
+    Vector3 = typestore.types["geometry_msgs/msg/Vector3"]
+    Quaternion = typestore.types["geometry_msgs/msg/Quaternion"]
+    TFMessage = typestore.types[message_type]
+    with Writer(path) as writer:
+        connection = writer.add_connection("/tf", message_type, typestore=typestore)
+        message = TFMessage(
+            transforms=[
+                TransformStamped(
+                    header=Header(seq=0, stamp=Time(sec=0, nanosec=0), frame_id="base_link"),
+                    child_frame_id="camera_link",
+                    transform=Transform(
+                        translation=Vector3(x=0.0, y=0.0, z=0.0),
+                        rotation=Quaternion(x=0.0, y=0.0, z=0.0, w=1.0),
+                    ),
+                )
+            ]
+        )
+        writer.write(connection, 0, typestore.serialize_ros1(message, message_type))
+
+
 def _run(input_paths: list[Path], output: Path, *extra: str) -> int:
     args = ["--input", *(str(path) for path in input_paths), "--output", str(output)]
     for mapping in MAPPINGS:
@@ -73,6 +105,67 @@ def _frames(path: Path) -> dict[str, list[str]]:
 
 
 class SyncFrameidBatchTests(unittest.TestCase):
+    def test_map_accepts_multiple_values_until_next_option(self) -> None:
+        args = build_parser().parse_args(
+            [
+                "--input",
+                "input.bag",
+                "--output",
+                "output",
+                "--map",
+                "/cam/a=frame_a",
+                "/cam/b=frame_b",
+                "--dry-run",
+            ]
+        )
+        self.assertEqual(
+            args.mappings,
+            [[("/cam/a", "frame_a"), ("/cam/b", "frame_b")]],
+        )
+        self.assertTrue(args.dry_run)
+
+    def test_map_keeps_repeated_invocation_compatibility(self) -> None:
+        args = build_parser().parse_args(
+            [
+                "--input",
+                "input.bag",
+                "--output",
+                "output",
+                "--map",
+                "/cam/a=frame_a",
+                "--map",
+                "/cam/b=frame_b",
+            ]
+        )
+        self.assertEqual(
+            args.mappings,
+            [[("/cam/a", "frame_a")], [("/cam/b", "frame_b")]],
+        )
+
+    def test_single_map_group_rewrites_multiple_topics(self) -> None:
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            source = tmp_path / "input.bag"
+            output = tmp_path / "output"
+            _create_bag(source)
+
+            self.assertEqual(
+                main(
+                    [
+                        "--input",
+                        str(source),
+                        "--output",
+                        str(output),
+                        "--map",
+                        "/cam/a=frame_a",
+                        "/cam/b=frame_b",
+                    ]
+                ),
+                0,
+            )
+            self.assertEqual(_frames(output / "input.bag")["/cam/a"], ["frame_a"] * 2)
+            self.assertEqual(_frames(output / "input.bag")["/cam/b"], ["frame_b"] * 2)
+
     def test_invalid_mapping_is_rejected(self) -> None:
         with self.assertRaises(SystemExit) as raised:
             main(
@@ -100,6 +193,30 @@ class SyncFrameidBatchTests(unittest.TestCase):
                 ]
             )
         self.assertEqual(raised.exception.code, 2)
+
+    def test_tf_topic_is_rejected_without_a_dedicated_mode(self) -> None:
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            source = tmp_path / "tf.bag"
+            _create_tf_bag(source)
+            output = tmp_path / "output"
+            before = hashlib.sha256(source.read_bytes()).digest()
+
+            self.assertEqual(
+                main(
+                    [
+                        "--input",
+                        str(source),
+                        "--output",
+                        str(output),
+                        "--map",
+                        "/tf=renamed_frame",
+                    ]
+                ),
+                1,
+            )
+            self.assertFalse((output / "tf.bag").exists())
+            self.assertEqual(hashlib.sha256(source.read_bytes()).digest(), before)
 
     def test_multiple_inputs_and_recursive_directory_are_processed_once(self) -> None:
         with TemporaryDirectory() as tmp:

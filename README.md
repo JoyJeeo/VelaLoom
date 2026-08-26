@@ -49,7 +49,7 @@ TF 树的静态连接。
 
 `scripts/sync_frameid.py` 可以按完整 topic 名称修改消息的 `header.frame_id`，支持单个 bag、
 多个 bag、目录批处理和递归扫描。`--input` 可以接收一个或多个文件/目录，`--output` 始终是输出
-目录。输入 bag 不会被修改，多个映射通过重复的 `--map` 参数提供：
+目录。输入 bag 不会被修改。`--map` 可以在一次参数中连续接收多个映射，直到下一个 `--xxx` 选项；也继续兼容重复使用 `--map`：
 
 ```bash
 conda run -n VelaLoom python scripts/sync_frameid.py \
@@ -57,8 +57,10 @@ conda run -n VelaLoom python scripts/sync_frameid.py \
   --output rosbag/frame-fixed \
   --recursive \
   --map /cam_l/color/image_raw/compressed=l_camera_optical_frame \
-  --map /cam_l/color/camera_info=l_camera_optical_frame
+        /cam_l/color/camera_info=l_camera_optical_frame
 ```
+
+也可以写成 `--map topic_a=frame_a --map topic_b=frame_b`。当前脚本没有裸子命令；映射参数会在下一个以 `--` 开头的选项处结束。
 
 默认不会覆盖输出目录中的同名文件；冲突时会生成带 `_loom_YYYYMMDD_HHMMSS` 的文件名。使用
 `--overwrite` 才会覆盖已有输出，使用 `--dry-run` 可以只扫描并查看将要修改的消息数量和输出

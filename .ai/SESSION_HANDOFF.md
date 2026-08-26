@@ -68,3 +68,21 @@
 - 未完成事项：`ISSUE-002`（正式自动化批处理测试文件）仍为 `TODO`；`ISSUE-003`（TF frame 重写模式评估）仍为 `TODO`。
 - 下一步：新对话开启后，先读取本文件、`.ai/TASK.md` 和 `.ai/PROGRESS.md`；应按串行规则选择一个 Issue，不能并行执行多个 Issue。
 - 注意事项/风险：真实 bag 仅做了 dry-run，未对 644 MB 原始 bag 执行实际写出；实际转换应输出到独立目录并保留原始文件。
+
+## SESSION-20260826-03
+
+- 日期：2026-08-26
+- 对话目标：开始并完成 `ISSUE-003`，评估 `/tf` 与 `/tf_static` 的 frame 重写模式。
+- 已完成：
+  - 文件：`.ai/TASK.md`、`.ai/DECISIONS.md`、`.ai/PROGRESS.md`、`CHANGELOG.md`、`tests/test_sync_frameid_batch.py`。
+  - Issue：`ISSUE-003` 已标记为 `DONE`。
+  - 决策：`sync_frameid.py` 暂不提供通用 `/tf`、`/tf_static` frame 重写；未来如需支持，必须另建独立模式和独立映射/TF 树验证。
+  - 测试：新增 TF 安全边界回归测试，验证普通映射遇到 `/tf` 会失败、清理临时输出且保持输入 SHA-256 不变。
+- 技术细节：
+  - 真实 rosbag 结构：`/tf` 56,292 条消息、30 对动态 frame；`/tf_static` 20 条消息、32 对静态 frame。
+  - 环境：conda `VelaLoom`，依赖 `rosbags`。
+  - 开发分支：`codex/issue-003-tf-frame-rewrite`；按约定尚未在特性分支提交或推送。
+- 验证结果：`conda run -n VelaLoom python -m unittest discover -s tests -v` 通过（6 项）；Python 语法检查和 `git diff --check` 通过。
+- 未完成事项：本次 ISSUE-003 修改尚未提交到 `main` 或推送；本地 `logs/` 目录保持未跟踪，未纳入交付。
+- 下一步：下次对话如继续，应先核对 `git status`，按流程将 ISSUE-003 相关修改提交到 `main` 并推送；若要实现 TF 改写，应新建独立 Issue。
+- 注意事项/风险：当前拒绝 TF 普通映射是刻意的安全行为，不要直接放宽为字符串替换；需先定义 parent/child 映射、冲突检测、动态/静态时间语义和完整 TF 树验证。

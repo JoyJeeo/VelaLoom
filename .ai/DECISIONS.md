@@ -23,3 +23,18 @@
 - 日期：2026-08-25
 - 决策：默认遇到重名追加 `_loom_YYYYMMDD_HHMMSS`，只有显式 `--overwrite` 才覆盖。
 - 原因：保护原始处理结果，降低批处理误覆盖风险。
+
+## D005：暂不提供通用 TF frame 重写模式
+
+- 日期：2026-08-26
+- 决策：`sync_frameid.py` 继续只处理普通消息的顶层 `message.header.frame_id`，不将 `/tf` 或 `/tf_static` 纳入通用 `--map`；如未来需要修改 TF，必须设计独立模式和独立映射规则。
+- 证据：真实 rosbag 中 `/tf` 消息为 `tf2_msgs/TFMessage`，frame 位于 `transforms[].header.frame_id` 和 `transforms[].child_frame_id`；`/tf_static` 还存在多条连接和静态变换集合，不能按普通 Header topic 等价处理。
+- 兼容性：全局替换父/子 frame 可能破坏 TF 树连通性、引入重复 child frame、改变静态/动态语义，或使传感器 topic 与 TF 不一致。
+- 风险控制：当前遇到 `/tf` 的普通映射会明确报错并清理临时输出，输入保持不变；新增回归测试锁定该安全边界。未来若有明确 TF 需求，另建 Issue，定义 parent/child 映射、冲突检测、时间语义和全量 TF 树验证。
+
+## D006：`--map` 支持一次接收多个映射
+
+- 日期：2026-08-26
+- 决策：将 `sync_frameid.py` 的 `--map` 解析为一个或多个连续的 `TOPIC=FRAME_ID` 值，遇到下一个选项时结束；保留重复 `--map` 的旧语法。
+- 原因：相机 topic 映射通常成组出现，减少重复书写，同时保持已有脚本调用兼容。
+- 限制：当前 CLI 没有裸子命令，因此“结束边界”定义为下一个以 `--` 开头的选项；未来引入子命令时需单独设计其边界解析。
