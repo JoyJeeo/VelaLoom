@@ -11,7 +11,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-TEST_OUTPUT = ROOT / "test_output/issue-017"
+TEST_OUTPUT = ROOT / "test_output/issue-018"
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from rosbags.highlevel import AnyReader  # noqa: E402
@@ -195,6 +195,10 @@ class UnifyRosbagTfScanTests(unittest.TestCase):
             self.assertEqual(analysis.graph.edge_sources[("odom", "base_link")], "B")
             self.assertEqual(analysis.graph.edge_sources[("base_link", "sensor")], "S")
             self.assertEqual(analysis.graph.edge_sources[("base_link", "arm")], "D")
+            rendered = format_forest(analysis.graph, "Combined sources")
+            self.assertIn("base_link [B]", rendered)
+            self.assertIn("sensor [S]", rendered)
+            self.assertIn("arm [D]", rendered)
 
     def test_forest_rendering_is_complete_stable_and_recommends_odom_tree(self) -> None:
         with TemporaryDirectory(dir=TEST_OUTPUT) as tmp:
@@ -217,11 +221,11 @@ class UnifyRosbagTfScanTests(unittest.TestCase):
                 "Tree 2: root=odom frames=3 markers=odom,base_link [RECOMMENDED]",
                 rendered,
             )
-            self.assertIn("[S] a_sensor", rendered)
-            self.assertIn("[S] z_sensor", rendered)
-            self.assertLess(rendered.index("[S] a_sensor"), rendered.index("[S] z_sensor"))
-            self.assertIn("[D] base_link", rendered)
-            self.assertIn("[D] arm", rendered)
+            self.assertIn("a_sensor [S]", rendered)
+            self.assertIn("z_sensor [S]", rendered)
+            self.assertLess(rendered.index("a_sensor [S]"), rendered.index("z_sensor [S]"))
+            self.assertIn("base_link [D]", rendered)
+            self.assertIn("arm [D]", rendered)
 
     def test_static_pose_conflict_fails(self) -> None:
         with TemporaryDirectory(dir=TEST_OUTPUT) as tmp:
@@ -426,6 +430,7 @@ class UnifyRosbagTfWriteTests(unittest.TestCase):
             self.assertFalse(output.parent.exists())
             self.assertNotIn("Proceed [Y/n]:", stdout.getvalue())
             self.assertIn("Added identity edges: 1", stdout.getvalue())
+            self.assertIn("base_link -> camera_root [S]", stdout.getvalue())
             self.assertIn("Result: dry-run complete; no output created", stdout.getvalue())
 
     def test_negative_confirmation_and_eof_cancel_without_output(self) -> None:

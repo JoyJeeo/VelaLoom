@@ -380,6 +380,19 @@
 - [x] 自动化测试覆盖单树、多树、根推荐、逐树挂载、重复、冲突、环路、非 TTY、dry-run、默认确认和失败清理；所有生成物仅位于 `test_output/issue-017/`。
 - [x] README、DECISIONS、PROGRESS 和 CHANGELOG 已同步；完整测试、真实 bag 验证、`git diff --check` 和 DOD 通过后才能标记 `DONE`。
 
+### ISSUE-018：将 TF 来源标记移到名称末尾
+
+- 状态：`DONE`
+- 优先级：P2
+- 目标：调整 `unify_rosbag_tf.py` 的终端树形日志，把 `[D]`、`[S]`、`[B]` 从 frame 名称前移到名称末尾，并统一新增桥接边摘要的标记位置。
+- 依赖：ISSUE-017（已完成）。
+- 修改边界：`scripts/unify_rosbag_tf.py`、`tests/test_unify_rosbag_tf.py` 及配套任务、进展和变更记录；不改变 TF 分析、交互选择、转换结果或输入输出数据。
+- 验收标准：
+  - [x] 完整树和子树均显示为 `frame [D/S/B]`；
+  - [x] 新增边摘要显示为 `parent → child [S]`；
+  - [x] 同级 frame 排序和所有既有功能保持不变；
+  - [x] 模块测试、完整回归、语法检查和 `git diff --check` 通过。
+
 ## 新增 Issue 模板
 
 复制以下结构，分配新的编号后追加到本文件：

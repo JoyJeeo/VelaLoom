@@ -284,7 +284,7 @@ def format_subtree(graph: ForestGraph, root: str) -> str:
     def append_children(frame: str, depth: int) -> None:
         for child in graph.children[frame]:
             source = graph.edge_sources[(frame, child)]
-            lines.append(f"{'  ' * depth}[{source}] {child}")
+            lines.append(f"{'  ' * depth}{child} [{source}]")
             append_children(child, depth + 1)
 
     append_children(root, 1)
@@ -705,7 +705,7 @@ def main(
         plan = plan_connections(analysis.graph, input_stream, output_stream)
         print(f"Added identity edges: {len(plan.bridges)}", file=output_stream)
         for bridge in plan.bridges:
-            print(f"  [S] {bridge.parent} -> {bridge.child}", file=output_stream)
+            print(f"  {bridge.parent} -> {bridge.child} [S]", file=output_stream)
         print(format_forest(plan.final_graph, "After repair"), file=output_stream)
         print(
             f"Topology validation: PASS root={plan.target_root} "

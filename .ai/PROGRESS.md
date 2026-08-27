@@ -128,3 +128,12 @@
 - 最终门禁：`TMPDIR="$PWD/test_output/issue-017/tmp" PYTHONPYCACHEPREFIX="$PWD/test_output/issue-017/pycache" conda run -n VelaLoom python -m unittest discover -s tests -v` 通过（39 项）；全部脚本和测试 `py_compile`、`unify_rosbag_tf.py --help`、交付代码无 `TODO` 和 `git diff --check` 通过。
 - 测试产物：所有本次生成物均位于 `test_output/issue-017/`；保留 `real-output.bag`，最终精确清理本次 `tmp/` 和 `pycache/` 子目录，不清理其他 Issue 的输出。
 - 依赖和限制：未新增依赖，继续使用 `VelaLoom` 环境中的 `rosbags 0.11.5`。未调用 ROS Noetic 命令，因此无需启动 `ros1_noetic`；真实格式、拓扑和保真验证均由 `rosbags` 完成。单位挂载是调用者确认的坐标重合假设，不代表脚本恢复了几何标定外参。
+
+## ISSUE-018 测试记录（2026-08-28）
+
+- 测试等级：L1；仅调整 `scripts/unify_rosbag_tf.py` 终端展示格式及对应测试、README 和交付记录，不改变 TF 数据结构、交互决策或 bag 写出行为。
+- 行为：完整森林、独立子树和修复后树统一显示为 `frame [D/S/B]`；新增单位边摘要显示为 `parent -> child [S]`；同级 frame 仍按名称稳定排序。
+- 回归测试：先更新后缀格式断言，确认旧实现有 3 项失败；实现后模块 18 项测试和全仓 39 项测试全部通过，同时覆盖 `[D]`、`[S]`、`[B]` 三种来源。
+- 验证命令：`TMPDIR="$PWD/test_output/issue-018/tmp" PYTHONPYCACHEPREFIX="$PWD/test_output/issue-018/pycache" conda run -n VelaLoom python -m unittest discover -s tests -v`、全部脚本/测试 `py_compile`、`git diff --check`。
+- 测试产物：本轮生成文件仅位于 `test_output/issue-018/`，最终精确清理 `tmp/` 和 `pycache/`；未生成或修改真实 bag。
+- 依赖和限制：未新增依赖；本次仅改变终端日志布局。
