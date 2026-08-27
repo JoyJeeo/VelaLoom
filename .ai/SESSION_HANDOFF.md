@@ -129,3 +129,23 @@
 - 未完成事项：`ISSUE-016` 尚未开始开发；`ISSUE-005` 至 `ISSUE-014` 中除 ISSUE-015 外仍按 `.ai/TASK.md` 状态等待；ROS1 原生和 Foxglove 人工验收等待容器挂载修复。
 - 下一步：新对话开始后先读取本文件、`.ai/TASK.md` 和 `.ai/PROGRESS.md`；若用户要求继续，应按串行规则将 ISSUE-016 标为 `IN_PROGRESS`，创建独立模块并严格把所有测试输出写入 `test_output/issue-016/`。
 - 注意事项/风险：ISSUE-016 不得复用 ISSUE-015 的三条相机单位桥接；任何 static/dynamic、位姿或多 parent 冲突都必须由调用者交互或匹配当前输入哈希的 decisions 文件明确决定，脚本不得自动选择；最终写出确认默认 `Y` 只适用于写出步骤，不适用于冲突选择。
+
+## SESSION-20260827-03
+
+- 日期：2026-08-27
+- 对话目标：开始并完成 ISSUE-016，将 URDF 全部 fixed joint 经调用者冲突决策后写入独立 ROS1 bag。
+- 已完成：
+  - 文件：新增 `scripts/add_urdf_fixed_tf.py`、`tests/test_add_urdf_fixed_tf.py`；更新 `README.md`、`CHANGELOG.md`、`.ai/TASK.md`、`.ai/PROGRESS.md` 和 `.ai/DECISIONS.md`。
+  - Issue：`ISSUE-016` 已标记为 `DONE`，六个阶段和全部验收标准均通过。
+  - 行为/接口：支持 `--input`、`--output`、`--urdf`、`--dry-run`、`--overwrite`、`--decisions-in`、`--decisions-out` 和 `--yes`；冲突选择无默认值，动态删除需完整输入 `YES`，最终 `[Y/n]` 默认写出；输出为单条 latched `/tf_static` 并在回读通过后原子替换。
+- 技术细节：
+  - 运行环境：非 ROS 命令和 `rosbags` 转换在 conda `VelaLoom` 中执行；交互运行使用 `conda run --no-capture-output -n VelaLoom` 保留 TTY。
+  - 依赖：未新增依赖，继续使用 `rosbags 0.11.5`。
+  - 真实输入：`rosbag/A03-A22-H-C-01-004-5_140-dex_hand-20260820190611-53-3ea2cb-v003.bag` 和 `urdf_kuavo5/urdf/biped_s300053_foxglove.urdf`，两者只读。
+  - 调用者选择：真实腰部冲突选择 `keep_bag`，保留 `waist_camera_base → waist_camera`，不写入 URDF 的 `waist_yaw_link → waist_camera`。
+  - 测试产物：保留 Git 忽略的 `test_output/issue-016/real-output.bag` 和 `real-decisions.json`；输出为 149,771 条消息、42 条静态 transform、fixed 覆盖率 25/26。
+- 验证结果：全仓 27 项测试、全部 Python 语法检查、CLI help 和 `git diff --check` 通过；输入 bag SHA-256 保持 `8a527e4811fc0a078f107670dd35e3c7b35d45fe7de0d94b5ee88c69a8e542ed`；56,292 条动态 TF 和 93,478 条非 TF 消息的原始字节、时间戳及连接元数据保持不变。
+- 提交：功能提交 `f408fd9 feat: add interactive URDF fixed TF conversion` 位于本地 `main`；本对话结束时远端尚未推送，本地 `main` 比 `origin/main` 超前。
+- 未完成事项：无 ISSUE-016 范围内未完成事项；`cam_h_link`、`cam_l_link`、`cam_r_link` 仍为独立根是本 Issue 明确不加入 ISSUE-015 相机桥接的结果。
+- 下一步：新对话先读取本文件、`.ai/TASK.md` 和 `.ai/PROGRESS.md`；如需同步远端，可在用户授权后推送本地 `main`；选择其他 Issue 前确认没有 `IN_PROGRESS` 项。
+- 注意事项/风险：decisions JSON 与输入 bag/URDF SHA-256、完整冲突候选和影响计数绑定，不得绕过校验复用到其他输入；不要把 `--yes` 当作冲突选择。
