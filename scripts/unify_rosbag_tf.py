@@ -281,13 +281,17 @@ def recommended_root(graph: ForestGraph) -> str | None:
 def format_subtree(graph: ForestGraph, root: str) -> str:
     lines = [root]
 
-    def append_children(frame: str, depth: int) -> None:
-        for child in graph.children[frame]:
+    def append_children(frame: str, prefix: str) -> None:
+        children = graph.children[frame]
+        for index, child in enumerate(children):
+            is_last = index == len(children) - 1
+            connector = "└── " if is_last else "├── "
             source = graph.edge_sources[(frame, child)]
-            lines.append(f"{'  ' * depth}{child} [{source}]")
-            append_children(child, depth + 1)
+            lines.append(f"{prefix}{connector}{child} [{source}]")
+            continuation = "    " if is_last else "│   "
+            append_children(child, prefix + continuation)
 
-    append_children(root, 1)
+    append_children(root, "")
     return "\n".join(lines)
 
 

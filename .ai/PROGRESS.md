@@ -137,3 +137,13 @@
 - 验证命令：`TMPDIR="$PWD/test_output/issue-018/tmp" PYTHONPYCACHEPREFIX="$PWD/test_output/issue-018/pycache" conda run -n VelaLoom python -m unittest discover -s tests -v`、全部脚本/测试 `py_compile`、`git diff --check`。
 - 测试产物：本轮生成文件仅位于 `test_output/issue-018/`，最终精确清理 `tmp/` 和 `pycache/`；未生成或修改真实 bag。
 - 依赖和限制：未新增依赖；本次仅改变终端日志布局。
+
+## ISSUE-019 测试记录（2026-08-28）
+
+- 测试等级：L1；仅调整 `scripts/unify_rosbag_tf.py` 的树形终端布局以及对应测试、README 和交付记录，不改变 TF 拓扑、交互选择或 bag 内容。
+- 行为：根节点保持独立首行；中间同级节点使用 `├──`，最后节点使用 `└──`，祖先仍有后续同级分支时用 `│` 纵向贯穿；frame 来源继续显示在名称末尾。
+- 回归测试：先增加连接线和多层分支断言，确认旧空格缩进实现失败；实现后模块 18 项与全仓 39 项测试通过，同级名称稳定排序保持不变。
+- 真实只读预览：对仓库真实 bag 的 `odom` 树执行 `format_subtree`，确认腿部、腰部、双臂和头部分支均有连续连接线；未写出或修改 bag。
+- 验证命令：`TMPDIR="$PWD/test_output/issue-019/tmp" PYTHONPYCACHEPREFIX="$PWD/test_output/issue-019/pycache" conda run -n VelaLoom python -m unittest discover -s tests -v`、全部脚本/测试 `py_compile`、`git diff --check`。
+- 测试产物：本轮生成文件仅位于 `test_output/issue-019/`，最终精确清理 `tmp/` 和 `pycache/`。
+- 依赖和限制：未新增依赖；终端需支持 Unicode 线框字符才能按设计显示。

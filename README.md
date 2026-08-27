@@ -85,7 +85,7 @@ conda run --no-capture-output -n VelaLoom python scripts/unify_rosbag_tf.py \
   --output test_output/issue-017/<input>-unified.bag
 ```
 
-交互前和挂载后都会打印完整层级；frame 名称末尾的 `[D]`、`[S]`、`[B]` 分别表示动态、静态或两者均有。
+交互前和挂载后都会用 `├──`、`└──`、`│` 打印完整层级树；frame 名称末尾的 `[D]`、`[S]`、`[B]` 分别表示动态、静态或两者均有。
 包含 `map`、`odom`、`base_link` 的树按该顺序获得推荐标记，但脚本不会自动替调用者选择。
 挂载提示支持 `list`、`tree` 和 `abort`；挂载完成后的 `Proceed [Y/n]:` 直接回车默认写出。
 

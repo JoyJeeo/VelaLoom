@@ -11,7 +11,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-TEST_OUTPUT = ROOT / "test_output/issue-018"
+TEST_OUTPUT = ROOT / "test_output/issue-019"
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from rosbags.highlevel import AnyReader  # noqa: E402
@@ -208,6 +208,7 @@ class UnifyRosbagTfScanTests(unittest.TestCase):
                 static_messages=[[
                     _edge("camera_root", "z_sensor"),
                     _edge("camera_root", "a_sensor"),
+                    _edge("a_sensor", "nested_sensor"),
                 ]],
                 dynamic_messages=[[
                     _edge("odom", "base_link"),
@@ -216,7 +217,7 @@ class UnifyRosbagTfScanTests(unittest.TestCase):
             )
             rendered = format_forest(analyze_bag(source).graph, "Before repair")
             self.assertIn("Before repair", rendered)
-            self.assertIn("Tree 1: root=camera_root frames=3", rendered)
+            self.assertIn("Tree 1: root=camera_root frames=4", rendered)
             self.assertIn(
                 "Tree 2: root=odom frames=3 markers=odom,base_link [RECOMMENDED]",
                 rendered,
@@ -224,8 +225,12 @@ class UnifyRosbagTfScanTests(unittest.TestCase):
             self.assertIn("a_sensor [S]", rendered)
             self.assertIn("z_sensor [S]", rendered)
             self.assertLess(rendered.index("a_sensor [S]"), rendered.index("z_sensor [S]"))
+            self.assertIn("├── a_sensor [S]", rendered)
+            self.assertIn("│   └── nested_sensor [S]", rendered)
+            self.assertIn("└── z_sensor [S]", rendered)
             self.assertIn("base_link [D]", rendered)
             self.assertIn("arm [D]", rendered)
+            self.assertIn("└── base_link [D]\n    └── arm [D]", rendered)
 
     def test_static_pose_conflict_fails(self) -> None:
         with TemporaryDirectory(dir=TEST_OUTPUT) as tmp:
