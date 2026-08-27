@@ -95,24 +95,50 @@
 ## 5. 测试夹具和测试数据
 
 - 测试代码统一放在仓库根目录 `tests/`；共享脚本放在 `scripts/`，不得把可执行测试放入 `urdf/` 或 `rosbag/`；
-- 优先在测试运行时创建最小夹具，测试结束自动清理；
+- 优先在测试运行时创建最小夹具，测试结束自动清理；测试产生文件的位置必须遵守下述 `test_output/` 规则；
 - 夹具应包含足够验证结构的消息/文件，并明确每个字段用于验证什么；
 - 不把大型真实 rosbag、个人路径、凭据或敏感数据提交为测试夹具；
 - 若必须使用仓库已有数据，测试应可检测文件缺失，并在记录中说明依赖；
 - 测试必须可重复：固定输入、明确排序、避免依赖当前时间、网络、机器用户名或并发顺序；
 - 时间戳、随机数和临时目录应通过可控方式生成，断言不要依赖脆弱的完整日志文本。
 
+### 5.1 测试输出目录强制规则
+
+- 所有开发测试和验证主动生成的文件必须写入当前仓库根目录 `test_output/`，其绝对位置为 `<repo-root>/test_output/`；
+- 适用范围包括但不限于：运行时夹具、临时 bag、转换后 bag、日志、报表、决策文件、截图、渲染结果、哈希清单、失败诊断文件和中间输出；
+- 禁止把测试输出写入系统 `/tmp`、`/private/tmp`、操作系统默认临时目录、`rosbag/`、`urdf*/`、源码目录或仓库外个人路径；历史文档中的旧 `/tmp` 记录只表示过去事实，不再构成允许用法；
+- 测试代码使用 `TemporaryDirectory`、`mkdtemp` 或同类 API 时，必须显式将父目录设为 `<repo-root>/test_output/`；不得依赖系统默认临时目录；
+- 每个 Issue 或测试模块应使用独立子目录，例如 `test_output/issue-016/`、`test_output/test_unify_rosbag_tf/`，避免并行或重复运行互相覆盖；
+- 测试只可清理由本次运行创建且已精确解析的子目录或文件，不得递归删除整个 `test_output/`，也不得删除其他测试或用户保留的输出；
+- 测试开始前由测试或执行命令安全创建所需子目录；测试成功或失败后均应清理不需要保留的临时文件，需要人工复核的产物可以保留，但必须在测试记录中列出；
+- Python 字节码、coverage、pytest、构建系统等可配置缓存也应优先重定向到 `test_output/`；无法重定向的工具缓存必须已被 `.gitignore` 排除，并在测试记录中说明；
+- `test_output/` 是本地开发产物目录，必须由根目录 `.gitignore` 排除，不得把其中的大 bag、日志或临时工件提交到 Git；
+- 最终测试记录必须写明使用的 `test_output/` 子目录、保留文件和清理结果。
+
 ## 6. 测试执行规范
 
 ### 6.1 环境
 
-所有项目测试、脚本、构建和依赖检查都必须在 `VelaLoom` conda 环境中执行：
+非 ROS 项目测试、脚本、构建和依赖检查在 `VelaLoom` conda 环境中执行：
 
 ```bash
+mkdir -p test_output/tmp test_output/pycache
+TMPDIR="$PWD/test_output/tmp" \
+PYTHONPYCACHEPREFIX="$PWD/test_output/pycache" \
 conda run -n VelaLoom python -m unittest discover -s tests -v
 ```
 
 若使用其他测试工具，必须记录完整命令和所需依赖。依赖缺失时先确认是否属于项目环境问题；不能把系统 Python 的结果当作项目门禁结果。
+
+需要 ROS1/ROS Noetic runtime 的操作必须在 Docker 容器 `ros1_noetic` 中执行，例如：
+
+```bash
+docker start ros1_noetic
+docker exec ros1_noetic bash -lc \
+  'source /opt/ros/noetic/setup.bash && rosbag info <mounted-workspace-path>/rosbag/input.bag'
+```
+
+执行前用 `docker inspect ros1_noetic` 确认 `<mounted-workspace-path>`；输出文件和日志必须写入 `<mounted-workspace-path>/test_output/`，确保宿主机对应文件位于仓库根目录 `test_output/`。测试记录必须注明使用的是 `VelaLoom` 还是 `ros1_noetic`，以及宿主机与容器内的对应输出路径。
 
 ### 6.2 执行顺序
 

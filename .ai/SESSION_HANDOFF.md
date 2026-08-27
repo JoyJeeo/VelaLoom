@@ -86,3 +86,23 @@
 - 未完成事项：本次 ISSUE-003 修改尚未提交到 `main` 或推送；本地 `logs/` 目录保持未跟踪，未纳入交付。
 - 下一步：下次对话如继续，应先核对 `git status`，按流程将 ISSUE-003 相关修改提交到 `main` 并推送；若要实现 TF 改写，应新建独立 Issue。
 - 注意事项/风险：当前拒绝 TF 普通映射是刻意的安全行为，不要直接放宽为字符串替换；需先定义 parent/child 映射、冲突检测、动态/静态时间语义和完整 TF 树验证。
+
+## SESSION-20260827-01
+
+- 日期：2026-08-27
+- 对话目标：确定 URDF 与 rosbag TF 树的统一方式，并把 ROS1 Docker 执行约定和统一 TF 输出 bag 脚本方案写入本地 AI 开发规则与 Issue。
+- 已完成：
+  - 文件：`AGENTS.md`、`.ai/README.md`、`.ai/PROJECT_CONTEXT.md`、`.ai/DEVELOPMENT_WORKFLOW.md`、`.ai/TESTING.md`、`.ai/DECISIONS.md`、`.ai/PROGRESS.md`、`.ai/TASK.md`、`CHANGELOG.md`。
+  - Issue：新增 `ISSUE-015：实现统一 TF 输出 bag 转换脚本`，状态为 `TODO`，目标脚本为 `scripts/unify_rosbag_tf.py`。
+  - 方案：URDF 保持不变；原始 bag 保持不变；输出 bag 原样保留动态 `/tf`（包括 `odom → base_link`），重建去重后的 `/tf_static`，补齐 URDF 相机固定安装边，并增加三条单位桥接：`camera_base → cam_h_link`、`l_d405_camera_base → cam_l_link`、`r_d405_camera_base → cam_r_link`。
+  - 头部策略：输出结构采用 `zhead_2_link → camera_base → cam_h_link`；旧的 `zhead_2_link → head_camera_base → head_camera_depth` 链需要先扫描消息引用，不能静默删除。
+  - Foxglove 验收思路：输出 bag 提供实际 TF，URDF 作为 3D custom layer 以 `Transforms` 模式加载，Fixed frame 使用 `odom`；Transform Tree 只能看到数据源实际发布的 TF，不能自动显示 URDF 中缺失的边。
+- 技术细节：
+  - ROS1 执行环境：需要 ROS Noetic runtime 的 ROS/rosbag/ROS 消息/节点/构建/测试命令统一在 Docker 容器 `ros1_noetic` 中执行；非 ROS 命令使用 conda `VelaLoom`。
+  - 使用容器前需 `docker inspect ros1_noetic` 确认宿主机工作区挂载；容器停止时先启动并加载 `/opt/ros/noetic/setup.bash`；输出写入挂载路径。
+  - 真实 bag 与 URDF 的结构基线：URDF 75 条 joint，bag 62 条唯一 TF 边，44 条父子边完全匹配；bag 根为 `odom`、`cam_h_link`、`cam_l_link`、`cam_r_link`。
+  - 相关决策：`.ai/DECISIONS.md` 中新增 D008（ROS1 Docker）和 D009（统一 TF 输出 bag 及单位桥接）。
+- 验证结果：`conda run -n VelaLoom git diff --check` 通过；本次只修改规则、规划和记录文件，没有创建脚本，没有修改 URDF、原始 rosbag 或测试代码。
+- 未完成事项：`ISSUE-005` 仍为 `TODO`；`ISSUE-015` 尚未开始；没有生成统一 TF 输出 bag，也没有在 `ros1_noetic` 容器中执行 ROS 回放或 Foxglove 验收。
+- 下一步：新对话开启后先读取本文件、`.ai/TASK.md`、`.ai/PROGRESS.md`，确认 `ISSUE-005`/`ISSUE-015` 串行依赖；开始 ROS 操作前检查 `ros1_noetic` 挂载路径，再按 ISSUE-015 阶段一设计并实现 `scripts/unify_rosbag_tf.py`。
+- 注意事项/风险：三条单位桥接是用户确认的拓扑方案，但仍代表坐标系重合假设；头部深度图当前使用 `cam_h_color_optical_frame`、腰部相机命名、雷达拼写以及 12→20 手指关节映射尚未解决；工作区既有 `.ai/*` 修改、`logs/` 和 `biped_s300053_foxglove_副本.urdf` 删除状态必须保留，不能误覆盖或纳入无关提交。

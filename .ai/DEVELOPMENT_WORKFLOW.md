@@ -34,10 +34,10 @@ git push origin main
 1. 阅读本目录规范和仓库 `AGENTS.md`，尤其是 `DOD.md`、`TESTING.md` 和本文件的分支/提交规则。
 2. 在 `TASK.md` 中找到一个 `TODO` Issue，将其改为 `IN_PROGRESS`；确认没有其他 Issue 正在执行。
 3. 检查 `git status`，保留已有用户修改。
-4. 确认使用 `VelaLoom` 环境。
+4. 确认执行环境：非 ROS 命令使用 `VelaLoom`；需要 ROS1/ROS Noetic runtime 的命令使用 `ros1_noetic` Docker 容器，并确认工作区挂载路径。
 5. 先确定方案、文件边界和验收标准；确认只涉及一个模块，并创建特性分支。
 6. 使用 `apply_patch` 编辑文件。
-7. 按 `TESTING.md` 选择与风险匹配的测试等级，执行语法检查、自动化测试或真实数据验证。
+7. 按 `TESTING.md` 选择与风险匹配的测试等级；先将所有测试夹具、临时文件、转换结果、日志和报告的输出根设置为仓库 `test_output/`，再执行语法检查、自动化测试或真实数据验证。不得使用系统 `/tmp` 或仓库外路径保存测试输出。
 8. 按 `DOD.md` 逐项核对完成条件；满足后将 Issue 改为 `DONE`，否则改为 `BLOCKED` 或继续开发，并记录变更文件和验证结果。
 9. 更新 `PROGRESS.md` 和 `CHANGELOG.md`；重要技术选择追加到 `DECISIONS.md`。`CHANGELOG.md` 是每个特性或修复必需的交付记录，但不作为测试通过的依据。
 10. 确认特性分支没有提交，切换到 `main`，只提交当前特性相关文件；按授权范围推送 `main`。
@@ -64,6 +64,14 @@ git push origin main
 - 阶段失败不能通过跳过测试、降低断言或把问题留给最终回归来绕过；
 - 阶段之间保留可运行状态，避免长期处于“半成品全部不可验证”的状态；
 - 阶段记录应写入工作计划或 `PROGRESS.md`，至少包含阶段状态、验证命令和结果。
+
+## ROS1 容器执行约定
+
+- ROS1/ROS Noetic 相关命令必须在 `ros1_noetic` 容器中执行，包括 `rosbag`、`rosrun`、ROS 节点、ROS 消息工具和依赖 ROS1 runtime 的构建/测试。
+- 使用前先执行只读的 `docker inspect ros1_noetic`，确认宿主机工作区到容器内路径的挂载关系；容器处于停止状态时先启动。
+- 容器命令应显式加载 `/opt/ros/noetic/setup.bash`，并使用挂载后的容器路径访问项目文件。
+- ROS 命令产生的测试输出必须写入挂载工作区的 `test_output/`，从而在宿主机仓库根目录统一可见；容器内部未挂载路径或挂载工作区的其他目录不得作为测试输出位置。
+- 纯 Python、无需 ROS1 runtime 的项目命令仍在 `VelaLoom` 中执行。最终记录中必须注明所用环境和容器挂载路径。
 
 ## 跨对话交接
 

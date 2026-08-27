@@ -38,3 +38,40 @@
 - 决策：将 `sync_frameid.py` 的 `--map` 解析为一个或多个连续的 `TOPIC=FRAME_ID` 值，遇到下一个选项时结束；保留重复 `--map` 的旧语法。
 - 原因：相机 topic 映射通常成组出现，减少重复书写，同时保持已有脚本调用兼容。
 - 限制：当前 CLI 没有裸子命令，因此“结束边界”定义为下一个以 `--` 开头的选项；未来引入子命令时需单独设计其边界解析。
+
+## D007：将 rosbag ↔ URDF 对齐拆为串行专项 Issue
+
+- 日期：2026-08-26
+- 决策：将 10 条独立修复建议拆为 ISSUE-005 至 ISSUE-014，严格串行推进，每个 Issue 只讨论一个问题。
+- 原因：当前问题同时涉及命名、拓扑、时间、数据来源和几何外参；先统一接口契约可以避免在不同问题上重复修改或引入两套 TF 发布权。
+- 约束：本阶段仅更新 `.ai/` 规划和基线记录，不修改 URDF、rosbag 或程序代码；每个后续 Issue 完成前必须保留原始 bag 不变。
+- 当前状态：ISSUE-005 为下一步讨论入口，尚未进入 `IN_PROGRESS`，等待用户逐项确认 TF 发布权和根节点方案。
+
+## D008：ROS1 操作统一使用 `ros1_noetic` 容器
+
+- 日期：2026-08-27
+- 决策：需要 ROS1/ROS Noetic runtime 的 ROS、rosbag、ROS 消息、节点、构建和测试操作统一在 Docker 容器 `ros1_noetic` 中执行；非 ROS 项目命令继续使用 `VelaLoom` conda 环境。
+- 原因：容器已提供 Ubuntu 20.04 和 ROS Noetic，保证 ROS1 工具链一致，同时避免把 ROS runtime 依赖混入项目 conda 环境。
+- 约束：容器仅作为执行载体；使用前确认工作区挂载，必要时启动容器并加载 `/opt/ros/noetic/setup.bash`；输入、输出和日志必须通过挂载路径保留在宿主机工作区。
+
+## D009：统一 TF 输出 bag 使用相机桥接单位变换
+
+- 日期：2026-08-27
+- 决策：新增的统一 TF 输出 bag 转换工具保持 URDF 和原始 bag 不变，只在输出 bag 的规范化 `/tf_static` 中补齐 URDF 相机安装固定边，并增加 `camera_base → cam_h_link`、`l_d405_camera_base → cam_l_link`、`r_d405_camera_base → cam_r_link` 三条单位桥接。
+- 头部层级：输出 bag 采用 `zhead_2_link → camera_base → cam_h_link`；原始 `zhead_2_link → head_camera_base → head_camera_depth` 作为旧链，若有消息引用则不得静默删除。
+- 原因：用户已确认三组坐标系重合；将驱动 frame 作为 URDF 机械 frame 的同位子节点，可以在不改写图像 optical frame 的前提下，把相机数据接入唯一 `odom` 根。
+- 约束：`/tf` 动态消息原样复制并保留 `odom → base_link`；静态边按 `parent, child` 去重；冲突、重复 parent 或旧 frame 引用必须显式失败；原始 bag SHA-256 必须保持不变。
+
+## D010：统一 TF 输出采用单条规范化静态消息
+
+- 日期：2026-08-27
+- 决策：`unify_rosbag_tf.py` 只输出一条 latched `/tf_static` 消息；相同 `parent→child` 且位姿一致的输入边合并，位姿冲突或同一 child 多 parent 直接失败。默认移除旧头部链，只有 `--keep-legacy-head-chain` 显式保留；若普通消息引用旧 frame，默认失败而不静默删除。
+- 原因：消除重复静态发布来源，保证合并动态和静态边后 TF 根集合为 `{odom}`，并避免破坏仍在使用旧 frame 的数据。
+- 约束：固定安装边只从传入 URDF 读取，不在脚本中重复硬编码位姿；三条桥接边固定为单位变换。
+
+## D011：开发测试文件输出统一使用 test_output
+
+- 日期：2026-08-27
+- 决策：所有开发测试和验证主动生成的夹具、临时文件、转换结果、bag、日志、报告、截图及中间产物统一写入仓库根目录 `test_output/`，并按 Issue 或测试模块划分子目录；禁止使用系统 `/tmp`、仓库外个人路径、`rosbag/`、`urdf*/` 或源码目录作为测试输出位置。
+- 原因：集中管理测试产物，便于人工复核、失败清理、数据安全检查和跨宿主机/ROS 容器定位，避免大文件散落在系统临时目录或污染输入数据目录。
+- 约束：`test_output/` 必须被 Git 忽略；测试只清理由本次运行创建的精确子路径，不得清空整个目录；ROS 容器输出必须映射回宿主机同一目录；历史记录中的旧 `/tmp` 路径仅保留为事实，不再作为后续规范。
