@@ -74,21 +74,26 @@ conda run -n VelaLoom python -m unittest -v tests/test_sync_frameid_batch.py
 
 ## 统一 rosbag TF 输出
 
-`scripts/unify_rosbag_tf.py` 将单个 ROS1 bag 复制到新的输出路径，并把 `/tf_static` 重建为一条
-去重、冲突检查后的 latched 消息。脚本从 Foxglove URDF 读取七条相机安装 fixed joint，加入
-`camera_base → cam_h_link`、`l_d405_camera_base → cam_l_link`、`r_d405_camera_base → cam_r_link`
-三条单位桥接；原始 `/tf` 和所有非 TF 消息按原始字节复制，输入 bag 始终只读。
+`scripts/unify_rosbag_tf.py` 仅读取单个 ROS1 bag 中已有的 `/tf` 和 `/tf_static`，去重静态变换并
+完整打印 TF 森林。存在多个根时，调用者先选择目标根，再为每棵剩余树分别选择当前已合并树中的
+挂载 link；脚本为每项选择增加一条单位静态变换。它不再读取 URDF，也没有写死相机 frame 或旧
+head camera 规则。
 
 ```bash
-conda run -n VelaLoom python scripts/unify_rosbag_tf.py \
+conda run --no-capture-output -n VelaLoom python scripts/unify_rosbag_tf.py \
   --input rosbag/<input>.bag \
-  --output rosbag/unified/<input>.bag \
-  --urdf urdf_kuavo5/urdf/biped_s300053_foxglove.urdf
+  --output test_output/issue-017/<input>-unified.bag
 ```
 
-默认会拒绝覆盖输出；使用 `--overwrite` 才允许覆盖，`--dry-run` 只扫描和验证而不创建输出。
-若普通消息仍引用 `head_camera_base` 或 `head_camera_depth`，脚本会失败并列出 topic；确认需要
-旧链时显式加 `--keep-legacy-head-chain`。
+交互前和挂载后都会打印完整层级；边使用 `[D]`、`[S]`、`[B]` 分别表示动态、静态或两者均有。
+包含 `map`、`odom`、`base_link` 的树按该顺序获得推荐标记，但脚本不会自动替调用者选择。
+挂载提示支持 `list`、`tree` 和 `abort`；挂载完成后的 `Proceed [Y/n]:` 直接回车默认写出。
+
+`--dry-run` 仍会执行完整的选根、逐树挂载和最终拓扑验证，但不会询问写出或创建任何文件。多根
+输入必须在 TTY 中交互；不提供自动 decisions 参数。默认拒绝覆盖，只有 `--overwrite` 才允许在
+写后回读验证成功后原子替换输出。输入 bag 始终只读，动态 `/tf` 和非 TF 消息的原始字节、时间戳、
+顺序及连接元数据保持不变，最终静态边写为一条 latched `/tf_static`。单位挂载表示调用者确认两个
+frame 的原点和方向重合；脚本只验证拓扑，不能从 TF 森林推断真实几何外参。
 
 ## 将 URDF 全部 fixed joint 写入 rosbag
 

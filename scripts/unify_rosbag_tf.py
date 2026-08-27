@@ -1,43 +1,33 @@
 #!/usr/bin/env python3
-"""Create a single-root ROS1 bag with a normalized static TF tree.
+"""Interactively connect a ROS1 bag's TF forest into one normalized tree.
 
-The input bag is copied without changing dynamic ``/tf`` messages or any
-non-TF message.  Static transforms are collected, checked for conflicts,
-deduplicated, supplemented from the selected URDF fixed joints, and written
-as one latched ``/tf_static`` message.  The input is always read-only.
+Purpose:
+    Inspect only the TF data already present in a ROS1 bag, deduplicate static
+    transforms, and let the caller connect detached TF trees explicitly.
+Input:
+    One read-only ROS1 ``.bag`` containing ``/tf`` and/or ``/tf_static``.
+Output:
+    A different ROS1 ``.bag`` with original dynamic/non-TF records and one
+    normalized latched ``/tf_static`` record.
+Example:
+    conda run --no-capture-output -n VelaLoom python \
+      scripts/unify_rosbag_tf.py --input input.bag --output output.bag
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import math
 import sys
-import xml.etree.ElementTree as ET
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Mapping, TextIO
 
 
-LEGACY_HEAD_EDGES = {
-    ("zhead_2_link", "head_camera_base"),
-    ("head_camera_base", "head_camera_depth"),
-}
-
-REQUIRED_URDF_EDGES = (
-    ("zhead_2_link", "camera_base"),
-    ("zarm_l7_link", "l_camera_link"),
-    ("l_camera_link", "l_d405_camera_base"),
-    ("l_d405_camera_base", "l_d405_camera"),
-    ("zarm_r7_link", "r_camera_link_connect"),
-    ("r_camera_link_connect", "r_d405_camera_base"),
-    ("r_d405_camera_base", "r_d405_camera"),
-)
-
-BRIDGE_EDGES = (
-    ("camera_base", "cam_h_link"),
-    ("l_d405_camera_base", "cam_l_link"),
-    ("r_d405_camera_base", "cam_r_link"),
-)
+Edge = tuple[str, str]
+SPECIAL_FRAMES = ("map", "odom", "base_link")
 
 
 @dataclass(frozen=True)
@@ -46,8 +36,41 @@ class TransformSpec:
     child: str
     translation: tuple[float, float, float]
     rotation: tuple[float, float, float, float]
-    # The first source timestamp is retained for static message placement.
     stamp: tuple[int, int] = (0, 0)
+
+
+@dataclass(frozen=True)
+class ForestGraph:
+    edge_sources: dict[Edge, str]
+    children: dict[str, tuple[str, ...]]
+    frames: frozenset[str]
+    roots: tuple[str, ...]
+    component_frames: dict[str, frozenset[str]]
+
+
+@dataclass(frozen=True)
+class BagAnalysis:
+    static_edges: dict[Edge, TransformSpec]
+    dynamic_edges: frozenset[Edge]
+    graph: ForestGraph
+    total_messages: int
+    non_tf_messages: int
+    tf_messages: int
+    static_messages: int
+    static_input_transforms: int
+    static_duplicates: int
+    static_timestamp: int
+
+
+@dataclass(frozen=True)
+class ConnectionPlan:
+    target_root: str
+    bridges: tuple[TransformSpec, ...]
+    final_graph: ForestGraph
+
+
+class InteractionCancelled(Exception):
+    """Raised when the caller aborts or closes an interactive prompt."""
 
 
 def load_rosbags():
@@ -61,172 +84,398 @@ def load_rosbags():
     return AnyReader, Writer
 
 
-def _quaternion_from_rpy(roll: float, pitch: float, yaw: float) -> tuple[float, float, float, float]:
-    cr, sr = math.cos(roll / 2.0), math.sin(roll / 2.0)
-    cp, sp = math.cos(pitch / 2.0), math.sin(pitch / 2.0)
-    cy, sy = math.cos(yaw / 2.0), math.sin(yaw / 2.0)
-    return (
-        sr * cp * cy - cr * sp * sy,
-        cr * sp * cy + sr * cp * sy,
-        cr * cp * sy - sr * sp * cy,
-        cr * cp * cy + sr * sp * sy,
+def _spec_from_message(transform) -> TransformSpec:
+    translation = transform.transform.translation
+    rotation = transform.transform.rotation
+    stamp = transform.header.stamp
+    spec = TransformSpec(
+        parent=str(transform.header.frame_id),
+        child=str(transform.child_frame_id),
+        translation=(
+            float(translation.x),
+            float(translation.y),
+            float(translation.z),
+        ),
+        rotation=(
+            float(rotation.x),
+            float(rotation.y),
+            float(rotation.z),
+            float(rotation.w),
+        ),
+        stamp=(int(stamp.sec), int(stamp.nanosec)),
     )
-
-
-def read_required_urdf_edges(path: Path) -> dict[tuple[str, str], TransformSpec]:
-    """Read only the seven camera installation fixed joints from ``path``."""
-    try:
-        root = ET.parse(path).getroot()
-    except (ET.ParseError, OSError) as exc:
-        raise ValueError(f"cannot read URDF: {path}: {exc}") from exc
-
-    by_edge: dict[tuple[str, str], TransformSpec] = {}
-    wanted = set(REQUIRED_URDF_EDGES)
-    for joint in root.findall("joint"):
-        if joint.attrib.get("type") != "fixed":
-            continue
-        parent_node, child_node = joint.find("parent"), joint.find("child")
-        if parent_node is None or child_node is None:
-            continue
-        edge = (parent_node.attrib.get("link", ""), child_node.attrib.get("link", ""))
-        if edge not in wanted:
-            continue
-        origin = joint.find("origin")
-        # xyz is a whitespace-separated attribute, not a scalar attribute.
-        if origin is None:
-            translation = (0.0, 0.0, 0.0)
-            rpy = (0.0, 0.0, 0.0)
-        else:
-            try:
-                translation = tuple(float(v) for v in origin.attrib.get("xyz", "0 0 0").split())
-                rpy = tuple(float(v) for v in origin.attrib.get("rpy", "0 0 0").split())
-            except ValueError as exc:
-                raise ValueError(f"invalid numeric URDF origin for {joint.attrib.get('name')}") from exc
-            if len(translation) != 3 or len(rpy) != 3:
-                raise ValueError(f"URDF origin must contain three xyz/rpy values for {joint.attrib.get('name')}")
-        by_edge[edge] = TransformSpec(edge[0], edge[1], translation, _quaternion_from_rpy(*rpy))
-
-    missing = [edge for edge in REQUIRED_URDF_EDGES if edge not in by_edge]
-    if missing:
-        formatted = ", ".join(f"{parent}->{child}" for parent, child in missing)
-        raise ValueError(f"URDF is missing required fixed joints: {formatted}")
-    return by_edge
-
-
-def _spec_from_message(transform, stamp: tuple[int, int]) -> TransformSpec:
-    parent, child = transform.header.frame_id, transform.child_frame_id
-    if not parent or not child:
-        raise ValueError("TF transform has an empty parent or child frame")
-    t, q = transform.transform.translation, transform.transform.rotation
-    return TransformSpec(
-        parent,
-        child,
-        (float(t.x), float(t.y), float(t.z)),
-        (float(q.x), float(q.y), float(q.z), float(q.w)),
-        stamp,
-    )
-
-
-def _same_pose(first: TransformSpec, second: TransformSpec, tolerance: float = 1e-9) -> bool:
-    return all(
-        abs(a - b) <= tolerance
-        for left, right in ((first.translation, second.translation), (first.rotation, second.rotation))
-        for a, b in zip(left, right)
-    )
-
-
-def _add_checked(edges: dict[tuple[str, str], TransformSpec], spec: TransformSpec, source: str) -> None:
-    existing = edges.get((spec.parent, spec.child))
-    if existing is not None:
-        if not _same_pose(existing, spec):
-            raise ValueError(f"conflicting static transform for {spec.parent}->{spec.child} ({source})")
-        return
-    other_parent = next((parent for parent, child in edges if child == spec.child), None)
-    if other_parent is not None and other_parent != spec.parent:
+    if not spec.parent or not spec.child:
         raise ValueError(
-            f"static child has multiple parents: {spec.child} ({other_parent}, {spec.parent})"
+            f"TF transform contains an empty frame: {spec.parent!r}->{spec.child!r}"
         )
-    edges[(spec.parent, spec.child)] = spec
+    if not all(math.isfinite(value) for value in spec.translation + spec.rotation):
+        raise ValueError(f"TF transform has a non-finite pose: {spec.parent}->{spec.child}")
+    return spec
 
 
-def _check_graph(dynamic: set[tuple[str, str]], static: dict[tuple[str, str], TransformSpec]) -> None:
-    edges = set(dynamic) | set(static)
+def _same_pose(first: TransformSpec, second: TransformSpec) -> bool:
+    return all(
+        math.isclose(left, right, rel_tol=0.0, abs_tol=1e-12)
+        for left, right in zip(
+            first.translation + first.rotation,
+            second.translation + second.rotation,
+        )
+    )
+
+
+def _add_static_checked(
+    edges: dict[Edge, TransformSpec], spec: TransformSpec
+) -> bool:
+    key = (spec.parent, spec.child)
+    existing = edges.get(key)
+    if existing is None:
+        edges[key] = spec
+        return False
+    if not _same_pose(existing, spec):
+        raise ValueError(
+            f"conflicting static transform for {spec.parent}->{spec.child}"
+        )
+    return True
+
+
+def build_graph(
+    dynamic_edges: Iterable[Edge],
+    static_edges: Mapping[Edge, TransformSpec],
+) -> ForestGraph:
+    """Validate the combined TF topology and return a stable forest view."""
+    dynamic = set(dynamic_edges)
+    static = set(static_edges)
+    all_edges = dynamic | static
+    if not all_edges:
+        raise ValueError("bag contains no TF transforms")
+
+    edge_sources = {
+        edge: "B" if edge in dynamic and edge in static else "D" if edge in dynamic else "S"
+        for edge in sorted(all_edges)
+    }
     parents: dict[str, str] = {}
-    for parent, child in edges:
+    children_lists: dict[str, list[str]] = {}
+    frames: set[str] = set()
+    for parent, child in sorted(all_edges):
         if not parent or not child:
-            raise ValueError("TF tree contains an empty frame")
+            raise ValueError(f"TF transform contains an empty frame: {parent!r}->{child!r}")
         previous = parents.setdefault(child, parent)
         if previous != parent:
-            raise ValueError(f"TF child has multiple parents: {child} ({previous}, {parent})")
-    frames = {frame for edge in edges for frame in edge}
-    roots = frames - set(parents)
-    if roots != {"odom"}:
-        rendered = ", ".join(sorted(roots)) or "<none>"
-        raise ValueError(f"normalized TF tree must have root {{odom}}, found {{{rendered}}}")
+            raise ValueError(
+                f"TF child has multiple parents: {child} ({previous}, {parent})"
+            )
+        children_lists.setdefault(parent, []).append(child)
+        frames.update((parent, child))
+
+    children = {
+        frame: tuple(sorted(children_lists.get(frame, ()))) for frame in sorted(frames)
+    }
+    state: dict[str, int] = {}
+
+    def visit(frame: str, stack: list[str]) -> None:
+        marker = state.get(frame, 0)
+        if marker == 1:
+            start = stack.index(frame)
+            cycle = stack[start:] + [frame]
+            raise ValueError("TF graph contains a cycle: " + " -> ".join(cycle))
+        if marker == 2:
+            return
+        state[frame] = 1
+        stack.append(frame)
+        for child in children[frame]:
+            visit(child, stack)
+        stack.pop()
+        state[frame] = 2
+
+    for frame in sorted(frames):
+        visit(frame, [])
+
+    roots = tuple(sorted(frames - set(parents)))
+    if not roots:
+        raise ValueError("TF graph has a component without a root")
+
+    component_frames: dict[str, frozenset[str]] = {}
+    reached: set[str] = set()
+    for root in roots:
+        component: set[str] = set()
+        pending = [root]
+        while pending:
+            frame = pending.pop()
+            if frame in component:
+                continue
+            component.add(frame)
+            pending.extend(reversed(children[frame]))
+        component_frames[root] = frozenset(component)
+        reached.update(component)
+    if reached != frames:
+        missing = ", ".join(sorted(frames - reached))
+        raise ValueError(f"TF graph has a component without a root: {missing}")
+
+    return ForestGraph(
+        edge_sources=edge_sources,
+        children=children,
+        frames=frozenset(frames),
+        roots=roots,
+        component_frames=component_frames,
+    )
 
 
-def _top_level_header_frame(message) -> str | None:
-    header = getattr(message, "header", None)
-    frame_id = getattr(header, "frame_id", None)
-    return frame_id or None
-
-
-def analyze_bag(path: Path, urdf_edges: dict[tuple[str, str], TransformSpec], keep_legacy: bool):
-    """Read-only scan returning static edges, dynamic edges, and header references."""
+def analyze_bag(path: Path) -> BagAnalysis:
+    """Scan a bag without writing and return deduplicated TF topology data."""
     AnyReader, _ = load_rosbags()
-    static: dict[tuple[str, str], TransformSpec] = {}
-    dynamic: set[tuple[str, str]] = set()
-    legacy_topics: dict[str, set[str]] = {"head_camera_base": set(), "head_camera_depth": set()}
-    static_count = 0
-    static_timestamp = (0, 0)
+    static_edges: dict[Edge, TransformSpec] = {}
+    dynamic_edges: set[Edge] = set()
     total_messages = 0
     non_tf_messages = 0
+    tf_messages = 0
+    static_messages = 0
+    static_input_transforms = 0
+    static_duplicates = 0
+    static_timestamp: int | None = None
+
     with AnyReader([path]) as reader:
         for connection, timestamp, rawdata in reader.messages():
             total_messages += 1
             if connection.topic == "/tf_static":
-                static_count += 1
-                if static_timestamp == (0, 0):
-                    static_timestamp = (timestamp // 1_000_000_000, timestamp % 1_000_000_000)
+                static_messages += 1
+                if static_timestamp is None:
+                    static_timestamp = timestamp
                 message = reader.deserialize(rawdata, connection.msgtype)
                 for transform in message.transforms:
-                    stamp_message = transform.header.stamp
-                    stamp = (int(stamp_message.sec), int(stamp_message.nanosec))
-                    spec = _spec_from_message(transform, stamp)
-                    _add_checked(static, spec, "input /tf_static")
-                continue
-            if connection.topic == "/tf":
+                    static_input_transforms += 1
+                    static_duplicates += int(
+                        _add_static_checked(static_edges, _spec_from_message(transform))
+                    )
+            elif connection.topic == "/tf":
+                tf_messages += 1
                 message = reader.deserialize(rawdata, connection.msgtype)
                 for transform in message.transforms:
-                    spec = _spec_from_message(transform, (0, 0))
-                    dynamic.add((spec.parent, spec.child))
-                continue
-            non_tf_messages += 1
-            message = reader.deserialize(rawdata, connection.msgtype)
-            frame_id = _top_level_header_frame(message)
-            if frame_id in legacy_topics:
-                legacy_topics[frame_id].add(connection.topic)
+                    spec = _spec_from_message(transform)
+                    dynamic_edges.add((spec.parent, spec.child))
+            else:
+                non_tf_messages += 1
 
-    if not keep_legacy:
-        for edge in LEGACY_HEAD_EDGES:
-            static.pop(edge, None)
-    for edge, spec in urdf_edges.items():
-        _add_checked(static, spec, "URDF")
-    for parent, child in BRIDGE_EDGES:
-        _add_checked(static, TransformSpec(parent, child, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)), "bridge")
+    graph = build_graph(dynamic_edges, static_edges)
+    return BagAnalysis(
+        static_edges=static_edges,
+        dynamic_edges=frozenset(dynamic_edges),
+        graph=graph,
+        total_messages=total_messages,
+        non_tf_messages=non_tf_messages,
+        tf_messages=tf_messages,
+        static_messages=static_messages,
+        static_input_transforms=static_input_transforms,
+        static_duplicates=static_duplicates,
+        static_timestamp=static_timestamp or 0,
+    )
 
-    referenced = {topic for topics in legacy_topics.values() for topic in topics}
-    if referenced and not keep_legacy:
-        details = "; ".join(f"{frame}: {', '.join(sorted(topics))}" for frame, topics in legacy_topics.items() if topics)
-        raise ValueError(
-            "bag messages reference legacy head frames; use --keep-legacy-head-chain "
-            f"to retain them ({details})"
+
+def recommended_root(graph: ForestGraph) -> str | None:
+    for special in SPECIAL_FRAMES:
+        for root in graph.roots:
+            if special in graph.component_frames[root]:
+                return root
+    return None
+
+
+def format_subtree(graph: ForestGraph, root: str) -> str:
+    lines = [root]
+
+    def append_children(frame: str, depth: int) -> None:
+        for child in graph.children[frame]:
+            source = graph.edge_sources[(frame, child)]
+            lines.append(f"{'  ' * depth}[{source}] {child}")
+            append_children(child, depth + 1)
+
+    append_children(root, 1)
+    return "\n".join(lines)
+
+
+def format_forest(graph: ForestGraph, title: str) -> str:
+    recommendation = recommended_root(graph)
+    lines = [f"=== {title} ==="]
+    for index, root in enumerate(graph.roots, start=1):
+        component = graph.component_frames[root]
+        markers = [frame for frame in SPECIAL_FRAMES if frame in component]
+        marker_text = f" markers={','.join(markers)}" if markers else ""
+        recommended = " [RECOMMENDED]" if root == recommendation else ""
+        lines.append(
+            f"Tree {index}: root={root} frames={len(component)}{marker_text}{recommended}"
         )
-    _check_graph(dynamic, static)
-    return static, dynamic, static_count, static_timestamp, total_messages, non_tf_messages, legacy_topics
+        lines.append(format_subtree(graph, root))
+    return "\n".join(lines)
 
 
-def _make_tf_message(typestore, specs: list[TransformSpec]):
+def _graph_with_bridges(
+    graph: ForestGraph, bridges: Iterable[TransformSpec]
+) -> ForestGraph:
+    dynamic = {
+        edge for edge, source in graph.edge_sources.items() if source in {"D", "B"}
+    }
+    static = {
+        edge: TransformSpec(
+            edge[0], edge[1], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)
+        )
+        for edge, source in graph.edge_sources.items()
+        if source in {"S", "B"}
+    }
+    for bridge in bridges:
+        static[(bridge.parent, bridge.child)] = bridge
+    return build_graph(dynamic, static)
+
+
+def _read_interactive_line(
+    input_stream: TextIO, output_stream: TextIO, prompt: str
+) -> str:
+    print(prompt, end="", file=output_stream, flush=True)
+    line = input_stream.readline()
+    if line == "":
+        raise InteractionCancelled("input closed")
+    return line.strip()
+
+
+def _choose_target_root(
+    graph: ForestGraph, input_stream: TextIO, output_stream: TextIO
+) -> str:
+    roots = graph.roots
+    print("Target roots:", file=output_stream)
+    for index, root in enumerate(roots, start=1):
+        suffix = " [RECOMMENDED]" if root == recommended_root(graph) else ""
+        print(f"  {index}. {root}{suffix}", file=output_stream)
+    while True:
+        response = _read_interactive_line(
+            input_stream,
+            output_stream,
+            "Select target root by number or frame name (abort to cancel): ",
+        )
+        if response.lower() == "abort":
+            raise InteractionCancelled("aborted by caller")
+        if response.isdigit():
+            index = int(response)
+            if 1 <= index <= len(roots):
+                return roots[index - 1]
+            print(f"Invalid root number: {response}", file=output_stream)
+            continue
+        if response in roots:
+            return response
+        print(f"Unknown root: {response or '<empty>'}", file=output_stream)
+
+
+def plan_connections(
+    graph: ForestGraph, input_stream: TextIO, output_stream: TextIO
+) -> ConnectionPlan:
+    """Interactively choose a target tree and identity bridges for other roots."""
+    if len(graph.roots) == 1:
+        target_root = graph.roots[0]
+        print(f"Single TF tree detected; target root: {target_root}", file=output_stream)
+        return ConnectionPlan(target_root, (), graph)
+
+    if not getattr(input_stream, "isatty", lambda: False)():
+        roots = ", ".join(graph.roots)
+        raise ValueError(
+            f"multiple TF roots require interactive selection, but stdin is not a TTY; roots: {roots}"
+        )
+
+    target_root = _choose_target_root(graph, input_stream, output_stream)
+    print(f"Selected target root: {target_root}", file=output_stream)
+    merged_frames = set(graph.component_frames[target_root])
+    bridges: list[TransformSpec] = []
+
+    for detached_root in (root for root in graph.roots if root != target_root):
+        detached_frames = graph.component_frames[detached_root]
+        print(
+            f"Detached tree root={detached_root} frames={len(detached_frames)}",
+            file=output_stream,
+        )
+        print(format_subtree(graph, detached_root), file=output_stream)
+        while True:
+            response = _read_interactive_line(
+                input_stream,
+                output_stream,
+                f"Parent link for {detached_root} (list/tree/abort): ",
+            )
+            command = response.lower()
+            if command == "abort":
+                raise InteractionCancelled("aborted by caller")
+            if command == "list":
+                print(
+                    "Available parent links: " + ", ".join(sorted(merged_frames)),
+                    file=output_stream,
+                )
+                continue
+            if command == "tree":
+                print(
+                    format_forest(
+                        _graph_with_bridges(graph, bridges), "Current TF forest"
+                    ),
+                    file=output_stream,
+                )
+                continue
+            if response in detached_frames:
+                print(
+                    f"Invalid parent: cannot use {response}: it is inside the detached tree",
+                    file=output_stream,
+                )
+                continue
+            if response not in merged_frames:
+                print(
+                    f"Invalid parent: cannot use {response or '<empty>'}: "
+                    "it is not in the current merged target tree",
+                    file=output_stream,
+                )
+                continue
+            bridge = TransformSpec(
+                response,
+                detached_root,
+                (0.0, 0.0, 0.0),
+                (0.0, 0.0, 0.0, 1.0),
+            )
+            candidate = _graph_with_bridges(graph, [*bridges, bridge])
+            bridges.append(bridge)
+            merged_frames.update(detached_frames)
+            print(
+                f"Selected mount: {response} -> {detached_root} (identity)",
+                file=output_stream,
+            )
+            # Candidate validation above protects against cycles and multiple parents.
+            if detached_root not in candidate.frames:  # pragma: no cover - defensive
+                raise ValueError(f"failed to merge detached root: {detached_root}")
+            break
+
+    final_graph = _graph_with_bridges(graph, bridges)
+    if final_graph.roots != (target_root,) or len(final_graph.component_frames) != 1:
+        raise ValueError("planned TF graph is not a single connected tree")
+    return ConnectionPlan(target_root, tuple(bridges), final_graph)
+
+
+def print_scan_summary(
+    analysis: BagAnalysis, input_bag: Path, output_bag: Path, stream: TextIO
+) -> None:
+    print(f"Input: {input_bag}", file=stream)
+    print(f"Output: {output_bag}", file=stream)
+    print(
+        f"Messages: total={analysis.total_messages} /tf={analysis.tf_messages} "
+        f"/tf_static={analysis.static_messages} non-TF={analysis.non_tf_messages}",
+        file=stream,
+    )
+    print(f"Dynamic unique edges: {len(analysis.dynamic_edges)}", file=stream)
+    print(
+        "Static transforms: "
+        f"input={analysis.static_input_transforms} "
+        f"duplicates={analysis.static_duplicates} retained={len(analysis.static_edges)}",
+        file=stream,
+    )
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _make_tf_message(typestore, specs: Iterable[TransformSpec]):
     Header = typestore.types["std_msgs/msg/Header"]
     Time = typestore.types["builtin_interfaces/msg/Time"]
     TransformStamped = typestore.types["geometry_msgs/msg/TransformStamped"]
@@ -237,29 +486,117 @@ def _make_tf_message(typestore, specs: list[TransformSpec]):
     for spec in specs:
         transforms.append(
             TransformStamped(
-                header=Header(seq=0, stamp=Time(sec=spec.stamp[0], nanosec=spec.stamp[1]), frame_id=spec.parent),
+                header=Header(
+                    seq=0,
+                    stamp=Time(sec=spec.stamp[0], nanosec=spec.stamp[1]),
+                    frame_id=spec.parent,
+                ),
                 child_frame_id=spec.child,
                 transform=Transform(
-                    translation=Vector3(x=spec.translation[0], y=spec.translation[1], z=spec.translation[2]),
-                    rotation=Quaternion(x=spec.rotation[0], y=spec.rotation[1], z=spec.rotation[2], w=spec.rotation[3]),
+                    translation=Vector3(
+                        x=spec.translation[0],
+                        y=spec.translation[1],
+                        z=spec.translation[2],
+                    ),
+                    rotation=Quaternion(
+                        x=spec.rotation[0],
+                        y=spec.rotation[1],
+                        z=spec.rotation[2],
+                        w=spec.rotation[3],
+                    ),
                 ),
             )
         )
     return typestore.types["tf2_msgs/msg/TFMessage"](transforms=transforms)
 
 
-def rewrite_bag(input_bag: Path, output_bag: Path, urdf: Path, keep_legacy: bool) -> dict[str, int]:
-    AnyReader, Writer = load_rosbags()
-    urdf_edges = read_required_urdf_edges(urdf)
-    # Scan first so failures happen before any output is created.
-    static, _dynamic, static_count, static_timestamp, total_messages, non_tf_messages, _ = analyze_bag(
-        input_bag, urdf_edges, keep_legacy
+def _final_static_edges(
+    analysis: BagAnalysis, plan: ConnectionPlan
+) -> dict[Edge, TransformSpec]:
+    result = dict(analysis.static_edges)
+    for bridge in plan.bridges:
+        _add_static_checked(result, bridge)
+    return result
+
+
+def _connection_metadata(connection) -> tuple[object, ...]:
+    ext = connection.ext
+    msgdef = getattr(connection.msgdef, "data", connection.msgdef)
+    return (
+        connection.topic,
+        connection.msgtype,
+        msgdef,
+        connection.digest,
+        getattr(ext, "callerid", None),
+        getattr(ext, "latching", None),
     )
-    temp_bag = output_bag.with_name(output_bag.name + ".tmp")
-    if temp_bag.exists():
-        temp_bag.unlink()
-    specs = [static[key] for key in sorted(static)]
-    written_static = False
+
+
+def _passthrough_records(path: Path) -> list[tuple[object, ...]]:
+    AnyReader, _ = load_rosbags()
+    records = []
+    with AnyReader([path]) as reader:
+        for connection, timestamp, rawdata in reader.messages():
+            if connection.topic != "/tf_static":
+                records.append((_connection_metadata(connection), timestamp, rawdata))
+    return records
+
+
+def verify_output(
+    input_bag: Path,
+    output_bag: Path,
+    expected_static: Mapping[Edge, TransformSpec],
+    expected_root: str,
+) -> BagAnalysis:
+    """Reopen a candidate output and verify topology and passthrough fidelity."""
+    AnyReader, _ = load_rosbags()
+    output_analysis = analyze_bag(output_bag)
+    if output_analysis.static_messages != 1:
+        raise ValueError(
+            f"output must contain one /tf_static message, found {output_analysis.static_messages}"
+        )
+    if output_analysis.graph.roots != (expected_root,):
+        raise ValueError(
+            f"output root mismatch: expected {expected_root}, found {output_analysis.graph.roots}"
+        )
+    if set(output_analysis.static_edges) != set(expected_static):
+        raise ValueError("output static edge set does not match the approved plan")
+    for edge, expected in expected_static.items():
+        if not _same_pose(expected, output_analysis.static_edges[edge]):
+            raise ValueError(f"output static pose mismatch: {edge[0]}->{edge[1]}")
+    if _passthrough_records(input_bag) != _passthrough_records(output_bag):
+        raise ValueError(
+            "output changed dynamic /tf or non-TF bytes, timestamps, order, or connection metadata"
+        )
+    with AnyReader([output_bag]) as reader:
+        static_connections = [
+            connection for connection in reader.connections if connection.topic == "/tf_static"
+        ]
+        if len(static_connections) != 1:
+            raise ValueError(
+                f"output must contain one /tf_static connection, found {len(static_connections)}"
+            )
+        if getattr(static_connections[0].ext, "latching", None) != 1:
+            raise ValueError("output /tf_static connection is not latched")
+    return output_analysis
+
+
+def rewrite_bag(
+    input_bag: Path,
+    output_bag: Path,
+    analysis: BagAnalysis,
+    plan: ConnectionPlan,
+    expected_input_hash: str,
+) -> BagAnalysis:
+    """Write, verify, and atomically install the approved normalized bag."""
+    AnyReader, Writer = load_rosbags()
+    if _sha256(input_bag) != expected_input_hash:
+        raise ValueError("input bag changed after analysis; refusing to write")
+    final_static = _final_static_edges(analysis, plan)
+    output_bag.parent.mkdir(parents=True, exist_ok=True)
+    temp_bag = output_bag.with_name(
+        f".{output_bag.stem}.{uuid.uuid4().hex}.tmp.bag"
+    )
     try:
         with AnyReader([input_bag]) as reader, Writer(temp_bag) as writer:
             connection_map = {}
@@ -271,86 +608,134 @@ def rewrite_bag(input_bag: Path, output_bag: Path, urdf: Path, keep_legacy: bool
                     source.topic,
                     source.msgtype,
                     typestore=reader.typestore,
-                    msgdef=source.msgdef.data,
+                    msgdef=getattr(source.msgdef, "data", source.msgdef),
                     md5sum=source.digest,
                     callerid=getattr(ext, "callerid", None),
                     latching=getattr(ext, "latching", None),
                 )
             static_connection = writer.add_connection(
-                "/tf_static", "tf2_msgs/msg/TFMessage", typestore=reader.typestore, latching=1
+                "/tf_static",
+                "tf2_msgs/msg/TFMessage",
+                typestore=reader.typestore,
+                latching=1,
             )
+            specs = [final_static[edge] for edge in sorted(final_static)]
             normalized = _make_tf_message(reader.typestore, specs)
-            normalized_raw = reader.typestore.serialize_ros1(normalized, "tf2_msgs/msg/TFMessage")
+            normalized_raw = reader.typestore.serialize_ros1(
+                normalized, "tf2_msgs/msg/TFMessage"
+            )
+            static_written = False
             for source, timestamp, rawdata in reader.messages():
                 if source.topic == "/tf_static":
-                    if not written_static:
+                    if not static_written:
                         writer.write(static_connection, timestamp, normalized_raw)
-                        written_static = True
+                        static_written = True
                     continue
+                if not static_written and analysis.static_messages == 0:
+                    writer.write(static_connection, timestamp, normalized_raw)
+                    static_written = True
                 writer.write(connection_map[source.id], timestamp, rawdata)
-            if not written_static:
-                writer.write(static_connection, static_timestamp[0] * 1_000_000_000 + static_timestamp[1], normalized_raw)
+            if not static_written:  # Defensive: graph validation normally rejects an empty bag.
+                writer.write(static_connection, analysis.static_timestamp, normalized_raw)
+
+        if _sha256(input_bag) != expected_input_hash:
+            raise ValueError("input bag changed while output was being written")
+        output_analysis = verify_output(
+            input_bag, temp_bag, final_static, plan.target_root
+        )
         temp_bag.replace(output_bag)
+        return output_analysis
     except Exception:
         if temp_bag.exists():
             temp_bag.unlink()
         raise
-    return {
-        "input_messages": total_messages,
-        "non_tf_messages": non_tf_messages,
-        "input_static_messages": static_count,
-        "output_static_transforms": len(specs),
-    }
+
+
+def confirm_write(input_stream: TextIO, output_stream: TextIO) -> bool:
+    while True:
+        try:
+            response = _read_interactive_line(
+                input_stream, output_stream, "Proceed [Y/n]: "
+            ).lower()
+        except InteractionCancelled:
+            return False
+        if response in {"", "y", "yes"}:
+            return True
+        if response in {"n", "no"}:
+            return False
+        print("Please answer y/yes or n/no.", file=output_stream)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    default_urdf = Path(__file__).resolve().parents[1] / "urdf_kuavo5/urdf/biped_s300053_foxglove.urdf"
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, required=True, metavar="BAG")
     parser.add_argument("--output", type=Path, required=True, metavar="BAG")
-    parser.add_argument("--urdf", type=Path, default=default_urdf, metavar="URDF")
     parser.add_argument("--overwrite", action="store_true", help="replace an existing output bag")
-    parser.add_argument("--dry-run", action="store_true", help="scan and validate without writing a bag")
-    parser.add_argument(
-        "--keep-legacy-head-chain",
-        action="store_true",
-        help="retain zhead_2_link -> head_camera_base -> head_camera_depth",
-    )
+    parser.add_argument("--dry-run", action="store_true", help="interactively plan and validate without writing")
     return parser
 
 
-def main(argv: Iterable[str] | None = None) -> int:
+def main(
+    argv: Iterable[str] | None = None,
+    *,
+    input_stream: TextIO | None = None,
+    output_stream: TextIO | None = None,
+    error_stream: TextIO | None = None,
+) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    input_bag, output_bag, urdf = args.input.resolve(), args.output.resolve(), args.urdf.resolve()
+    input_stream = input_stream or sys.stdin
+    output_stream = output_stream or sys.stdout
+    error_stream = error_stream or sys.stderr
+    input_bag = args.input.resolve()
+    output_bag = args.output.resolve()
     try:
         if not input_bag.is_file() or input_bag.suffix != ".bag":
             raise ValueError(f"input is not an existing .bag file: {input_bag}")
-        if not urdf.is_file():
-            raise ValueError(f"URDF does not exist: {urdf}")
+        if output_bag.suffix != ".bag":
+            raise ValueError(f"output must use the .bag extension: {output_bag}")
         if input_bag == output_bag:
             raise ValueError("output must differ from input; the input bag is read-only")
         if output_bag.exists() and not args.overwrite:
             raise ValueError(f"output exists (use --overwrite): {output_bag}")
-        urdf_edges = read_required_urdf_edges(urdf)
-        analysis = analyze_bag(input_bag, urdf_edges, args.keep_legacy_head_chain)
-        static, dynamic, static_count, _timestamp, total_messages, non_tf_messages, legacy = analysis
+        input_hash = _sha256(input_bag)
+        analysis = analyze_bag(input_bag)
+        print_scan_summary(analysis, input_bag, output_bag, output_stream)
+        print(format_forest(analysis.graph, "Before repair"), file=output_stream)
+        plan = plan_connections(analysis.graph, input_stream, output_stream)
+        print(f"Added identity edges: {len(plan.bridges)}", file=output_stream)
+        for bridge in plan.bridges:
+            print(f"  [S] {bridge.parent} -> {bridge.child}", file=output_stream)
+        print(format_forest(plan.final_graph, "After repair"), file=output_stream)
         print(
-            f"{('DRY RUN: ' if args.dry_run else '')}{input_bag} -> {output_bag}\n"
-            f"  messages: {total_messages} (non-TF: {non_tf_messages})\n"
-            f"  /tf dynamic edges: {len(dynamic)}\n"
-            f"  /tf_static input messages: {static_count}; normalized transforms: {len(static)}"
+            f"Topology validation: PASS root={plan.target_root} "
+            f"frames={len(plan.final_graph.frames)}",
+            file=output_stream,
         )
-        if any(legacy.values()):
-            print("  legacy head references: " + "; ".join(f"{frame}: {', '.join(sorted(topics))}" for frame, topics in legacy.items() if topics))
+        if _sha256(input_bag) != input_hash:
+            raise ValueError("input bag changed during analysis")
         if args.dry_run:
+            print("Result: dry-run complete; no output created", file=output_stream)
             return 0
-        output_bag.parent.mkdir(parents=True, exist_ok=True)
-        result = rewrite_bag(input_bag, output_bag, urdf, args.keep_legacy_head_chain)
-        print(f"  wrote {result['output_static_transforms']} normalized static transforms")
+        if not confirm_write(input_stream, output_stream):
+            print("Result: cancelled; no output created", file=output_stream)
+            return 0
+        output_analysis = rewrite_bag(
+            input_bag, output_bag, analysis, plan, input_hash
+        )
+        print(
+            f"Result: wrote {output_bag} with "
+            f"{len(output_analysis.static_edges)} static transforms",
+            file=output_stream,
+        )
+        print(f"Input SHA-256 unchanged: {input_hash}", file=output_stream)
+        return 0
+    except InteractionCancelled as exc:
+        print(f"Result: cancelled ({exc}); no output created", file=output_stream)
         return 0
     except (RuntimeError, ValueError, OSError) as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        print(f"ERROR: {exc}", file=error_stream)
+        print("Result: failed; no output created", file=error_stream)
         return 1
 
 

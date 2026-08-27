@@ -308,6 +308,78 @@
   - [x] decisions 文件可审计、可重放且不会跨输入误用；
   - [x] 自动化测试、真实数据验证、语法检查和 `git diff --check` 全部通过，无未解释跳过。
 
+### ISSUE-017：将 unify_rosbag_tf 修复为交互式 TF 森林整理工具
+
+- 状态：`DONE`
+- 优先级：P0
+- 目标：修改 ISSUE-015 已交付的 `scripts/unify_rosbag_tf.py`，使其仅读取传入的 ROS1 bag，联合分析 `/tf` 和 `/tf_static`，去除重复静态 TF，完整打印 TF 森林，由调用者交互式选择目标根以及每棵剩余树应挂载到的 link，再使用单位变换连接各树，生成单根、无环、无多 parent 的新 bag。
+- 依赖：ISSUE-015（已完成）；本 Issue 是对其已交付脚本的独立需求变更，不修改 ISSUE-015 的历史方案、状态或验收记录。
+- 修改边界：`scripts/unify_rosbag_tf.py`、`tests/test_unify_rosbag_tf.py` 及该脚本的 `README.md`、`.ai/DECISIONS.md`、`.ai/PROGRESS.md`、`CHANGELOG.md` 配套记录；不修改其他转换脚本，不修改输入 bag，不修改 URDF。
+
+#### CLI 和旧专用规则删除
+
+- 保留 `--input BAG`、`--output BAG`、`--overwrite`、`--dry-run`；输入与输出必须为不同路径，默认拒绝覆盖。
+- 删除 `--urdf`、URDF XML 解析、默认 URDF 路径和七条相机安装 fixed joint；继续传入 `--urdf` 时必须由命令行解析器报未知参数。
+- 删除写死的 `camera_base → cam_h_link`、`l_d405_camera_base → cam_l_link`、`r_d405_camera_base → cam_r_link` 桥接；它们由通用交互挂载取代。
+- 删除旧 head camera 链自动删除、普通消息 header 引用检查和 `--keep-legacy-head-chain`；bag 中已有 head camera TF 原样保留。
+
+#### TF 扫描、去重与图验证
+
+- `/tf_static`：收集全部静态 transform；相同 parent、child 且位姿相同的边只保留一条；同边位姿冲突、空 frame 或同一 child 多 parent 时在接触输出前失败。
+- `/tf`：仅提取唯一 parent→child 边用于拓扑分析；不把不同时间的动态样本当作重复数据，不删除、修改或重新序列化原始动态消息。
+- 联合 `/tf` 与去重后 `/tf_static` 构图；交互前检查空 frame、child 多 parent、环路、无根连通分量和空 TF 数据，任一检查失败时返回非零状态且不创建输出。
+- 最终把去重后原始静态边和交互新增边重建为一条 latched `/tf_static` 消息。
+
+#### 完整 TF 森林终端日志
+
+- 调用者回答任何交互问题前，必须完整打印修复前 TF 森林，不截断 frame。
+- 每棵树显示序号、根 frame、frame 数量和完整层级；边标记 `[D]` 动态 `/tf`、`[S]` 静态 `/tf_static`、`[B]` 同时存在于两个 topic。
+- 标记每棵树是否包含 `map`、`odom`、`base_link`；按 `map > odom > base_link` 给出推荐目标树，但不自动代替调用者选择。
+- 树、根和同级 frame 按名称稳定排序，保证日志可复现和可测试。
+- 所有挂载完成后，在最终写入确认前再完整打印修复后 TF 树、去重摘要、新增边和拓扑验证结果。
+- 日志还必须包含输入/输出路径、TF 消息数、动态唯一边数、静态输入/重复/保留数、用户每项选择、最终根和写入/dry-run/取消/失败结果。
+
+#### 交互式根选择和逐树挂载
+
+- 只有一棵 TF 树时不询问目标根、不新增连接边，继续去重、验证和写入确认。
+- 有多棵树时列出所有真实根；调用者可按序号或根 frame 名选择目标树，脚本不删除、反转或重排目标树内部已有边。
+- 对每棵剩余树逐一打印完整子树，调用者必须输入该根应挂载到“当前已合并目标树”中的哪个 parent link；不得默认把其他根直接挂到目标根下。
+- 挂载 parent 必须存在于当前已合并目标树，不能位于待挂载树，不得造成环路或多 parent；无效输入必须打印具体原因并重新询问。
+- 每次挂载新增 `selected_parent_link → detached_root` 静态边，使用已确认的单位变换 `translation=(0,0,0)`、`quaternion=(0,0,0,1)`；挂载完的树立即纳入当前目标树，后续根可挂载到其 frame 上。
+- 交互命令至少支持 `list`（打印可用 parent link）、`tree`（重新打印当前完整 TF 森林）和 `abort`（取消且不创建输出）。
+- 多根且 stdin 不是 TTY 时安全失败，列出所有根并说明需要交互选择；本 Issue 不新增自动决策参数或决策文件。
+
+#### 写入确认、dry-run 和数据安全
+
+- 完成全部挂载后，必须先验证只有一个根、所有 frame 连通、无环且每个 child 只有一个 parent，再进入写入确认。
+- 正式写入提示为 `Proceed [Y/n]:`；直接回车、`y` 或 `yes` 继续，`n` 或 `no` 取消，其他输入重新询问，EOF 安全取消。
+- `--dry-run` 仍执行完整扫描、树打印、根选择、逐树挂载和最终拓扑验证，但不询问是否写入，不创建临时或最终 bag。
+- 输入 bag 始终只读；非 TF 消息和动态 `/tf` 必须按原始字节、时间戳、顺序和连接元数据复制。
+- 所有分析、交互和确认完成后才创建同目录临时 bag；写完后重新打开验证数据与 TF 不变式，通过后原子替换最终输出；失败或取消只清理本次精确临时路径。
+
+#### 阶段门禁
+
+- [x] 阶段一：固化新 CLI、图数据结构、完整树日志格式、交互语法和最小夹具；先写参数、扫描、去重、拓扑和日志回归测试。
+- [x] 阶段二：实现 bag-only 扫描、静态去重、连通分量/根/环路/多 parent 分析和完整森林打印；立即运行对应单元测试。
+- [x] 阶段三：实现目标根与逐树挂载 link 交互、单位边计划、`list/tree/abort` 和无效选择重试；立即运行交互回归测试。
+- [x] 阶段四：实现 `[Y/n]` 默认写入、dry-run、非 TTY 安全失败、原子写出和写后复核；立即运行输入哈希、原始消息保真、覆盖保护和失败清理测试。
+- [x] 阶段五：在 `VelaLoom` 中使用真实 bag 验证修复前四棵树、交互挂载三棵相机树和修复后单根；如使用 ROS Noetic 命令复核，先检查 `ros1_noetic` 挂载，产物仅写入宿主 `test_output/issue-017/`。
+- [x] 阶段六：运行完整回归、语法检查、`git diff --check` 和 DOD；同步 README、DECISIONS、PROGRESS 和 CHANGELOG。
+
+#### 验收标准
+
+- [x] 脚本仅需 bag 输入和输出，`--urdf` 与 `--keep-legacy-head-chain` 已删除并作为未知参数失败。
+- [x] 交互前完整打印 TF 森林，包含边来源、全部根、frame 数和 `map/odom/base_link` 推荐。
+- [x] 多根时调用者能选择目标根，并为每个其他根分别选择当前目标树中的挂载 link；脚本不自动把其他根直接挂到目标根。
+- [x] 所有新增连接都为调用者确认的 `selected_parent_link → detached_root` 单位静态变换，不存在写死相机 frame 规则。
+- [x] 静态重复边去重；位姿冲突、多 parent、环路、无根分量和非法挂载安全失败，不创建部分输出。
+- [x] 修复后只有一个根，所有 frame 可达，无环且每个 child 只有一个 parent；修复后完整树和验证结果在写入前打印。
+- [x] `Proceed [Y/n]:` 直接回车默认写入，否定、EOF 或中止不创建输出；`--dry-run` 完成交互和验证但不写文件。
+- [x] 输入 bag SHA-256 不变；原始动态 `/tf` 和非 TF 消息的字节、时间戳、顺序和连接元数据保持不变；最终静态边仅写为一条 latched `/tf_static`。
+- [x] 默认覆盖保护、`--overwrite`、临时文件精确清理和写后重新打开验证均通过。
+- [x] 自动化测试覆盖单树、多树、根推荐、逐树挂载、重复、冲突、环路、非 TTY、dry-run、默认确认和失败清理；所有生成物仅位于 `test_output/issue-017/`。
+- [x] README、DECISIONS、PROGRESS 和 CHANGELOG 已同步；完整测试、真实 bag 验证、`git diff --check` 和 DOD 通过后才能标记 `DONE`。
+
 ## 新增 Issue 模板
 
 复制以下结构，分配新的编号后追加到本文件：

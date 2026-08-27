@@ -113,3 +113,18 @@
 - 最终门禁：`TMPDIR="$PWD/test_output/issue-016/tmp" PYTHONPYCACHEPREFIX="$PWD/test_output/issue-016/pycache" conda run -n VelaLoom python -m unittest discover -s tests -v` 通过（27 项）；全部脚本/测试 `py_compile`、`add_urdf_fixed_tf.py --help` 和 `git diff --check` 通过。
 - 测试产物：保留 `test_output/issue-016/real-output.bag` 和 `real-decisions.json` 供人工复核；精确清理本次 `tmp/` 与 `pycache/` 子目录，不清理其他 `test_output/` 内容。
 - 依赖和限制：未新增依赖，继续使用 `VelaLoom` 环境中的 `rosbags 0.11.5`。本工具不建立 `cam_h/l/r` 相机桥接，因此这三棵相机树仍是独立根；这是 ISSUE-016 的明确范围，不是未解释失败。
+
+## ISSUE-017 测试记录（2026-08-28）
+
+- 测试等级：L3。
+- 变更范围：重构 `scripts/unify_rosbag_tf.py` 和 `tests/test_unify_rosbag_tf.py`；同步 `README.md`、`DECISIONS.md`、`TASK.md` 和 `CHANGELOG.md`。没有修改其他转换脚本、URDF 或输入 rosbag。
+- 阶段一至二：先写新 CLI、扫描、去重、拓扑和完整森林日志回归测试，再实现 bag-only 分析；6 项测试通过。删除 `--urdf`、`--keep-legacy-head-chain`、URDF fixed joint、写死相机桥接和旧 head camera 专用规则。
+- 阶段三：实现目标根编号/名称选择、逐树挂载、增长中的目标树、`list/tree/abort`、无效 parent 重试和非 TTY 安全失败；累计 11 项测试通过。
+- 阶段四：实现 `Proceed [Y/n]:` 默认写出、取消/EOF、dry-run、同目录唯一临时 bag、回读验证和原子替换；累计 18 项测试通过。覆盖默认/显式覆盖、输入输出同路径、非法后缀、强制验证失败清理，以及动态 `/tf` 和非 TF 原始记录保真。
+- 阶段五真实验证：输入 `rosbag/A03-A22-H-C-01-004-5_140-dex_hand-20260820190611-53-3ea2cb-v003.bag` 只读扫描得到 149,790 条消息、56,292 条 `/tf`、20 条 `/tf_static`、93,478 条非 TF；352 条输入静态 transform 去重为 32 条，联合 30 条动态唯一边形成 `cam_h_link`、`cam_l_link`、`cam_r_link`、`odom` 四棵树。
+- 真实交互选择：目标根选择 `odom`；调用者确认 `zhead_2_link → cam_h_link`、`zarm_l7_link → cam_l_link`、`zarm_r7_link → cam_r_link` 三条单位静态边。dry-run 和正式写出均完成，修复后为单一 `odom` 根、66 个 frame、无环且每个 child 单 parent。
+- 真实输出：保留 Git 忽略的 `test_output/issue-017/real-output.bag` 供人工复核，大小约 644 MB；回读为 149,771 条消息、单条 latched `/tf_static`（35 条 transform）、56,292 条动态 TF 和 93,478 条非 TF 消息。脚本内回读逐条确认动态/非 TF 的原始字节、时间戳、顺序和连接元数据保持不变。
+- 数据安全：输入 SHA-256 在 dry-run、写出和独立复核后均为 `8a527e4811fc0a078f107670dd35e3c7b35d45fe7de0d94b5ee88c69a8e542ed`；没有残留 `.real-output.*.tmp.bag`。
+- 最终门禁：`TMPDIR="$PWD/test_output/issue-017/tmp" PYTHONPYCACHEPREFIX="$PWD/test_output/issue-017/pycache" conda run -n VelaLoom python -m unittest discover -s tests -v` 通过（39 项）；全部脚本和测试 `py_compile`、`unify_rosbag_tf.py --help`、交付代码无 `TODO` 和 `git diff --check` 通过。
+- 测试产物：所有本次生成物均位于 `test_output/issue-017/`；保留 `real-output.bag`，最终精确清理本次 `tmp/` 和 `pycache/` 子目录，不清理其他 Issue 的输出。
+- 依赖和限制：未新增依赖，继续使用 `VelaLoom` 环境中的 `rosbags 0.11.5`。未调用 ROS Noetic 命令，因此无需启动 `ros1_noetic`；真实格式、拓扑和保真验证均由 `rosbags` 完成。单位挂载是调用者确认的坐标重合假设，不代表脚本恢复了几何标定外参。
