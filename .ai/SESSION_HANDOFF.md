@@ -149,3 +149,22 @@
 - 未完成事项：无 ISSUE-016 范围内未完成事项；`cam_h_link`、`cam_l_link`、`cam_r_link` 仍为独立根是本 Issue 明确不加入 ISSUE-015 相机桥接的结果。
 - 下一步：新对话先读取本文件、`.ai/TASK.md` 和 `.ai/PROGRESS.md`；如需同步远端，可在用户授权后推送本地 `main`；选择其他 Issue 前确认没有 `IN_PROGRESS` 项。
 - 注意事项/风险：decisions JSON 与输入 bag/URDF SHA-256、完整冲突候选和影响计数绑定，不得绕过校验复用到其他输入；不要把 `--yes` 当作冲突选择。
+
+## SESSION-20260828-01
+
+- 日期：2026-08-28
+- 对话目标：规划对 ISSUE-015 已交付的 `scripts/unify_rosbag_tf.py` 进行独立修复，将其从 URDF 相机专用补链脚本改为仅基于输入 bag 的交互式 TF 森林整理工具；本次只完成需求确认和 AI Issue 记录，不修改脚本代码。
+- 已完成：
+  - 对现有 `scripts/unify_rosbag_tf.py`、`tests/test_unify_rosbag_tf.py`、README、CHANGELOG 和 ISSUE-015 历史实现进行只读检查。
+  - 对真实 bag 只读分析：62 条唯一 TF 边，4 棵树；根分别为 `cam_h_link`、`cam_l_link`、`cam_r_link`、`odom`，`odom` 树包含 `base_link`。
+  - 与用户确认新行为：只读 bag；静态 TF 去重；交互前完整打印 TF 森林；多根时由调用者选目标根；每个其他根必须再由调用者分别选择当前目标树中的挂载 link；新增边使用单位变换，不得默认直接挂到目标根。
+  - 确认删除新脚本的 `--urdf`、URDF 解析、写死相机桥接、旧 head camera 专用删除策略和 `--keep-legacy-head-chain`；旧参数作为未知参数失败。
+  - 确认写入提示为 `Proceed [Y/n]:`，直接回车默认 `Y`；`--dry-run` 完成树选择、挂载交互和验证但不写 bag。
+  - 在 `.ai/TASK.md` Issue 列表尾部新增 `ISSUE-017：将 unify_rosbag_tf 修复为交互式 TF 森林整理工具`，状态为 `TODO`；ISSUE-015 的原文、`DONE` 状态和历史验收项保持不变。
+- ISSUE-017 关键契约：修复前和写入前均打印完整 TF 树；边标记 `[D]/[S]/[B]`；包含 `map/odom/base_link` 的树按 `map > odom > base_link` 仅做推荐；挂载支持 `list/tree/abort`；修复后必须单根、全连通、无环、无多 parent；动态 `/tf` 和非 TF 消息原始字节保持；输出原子写入并回读验证。
+- 修改文件：仅 `.ai/TASK.md` 新增 ISSUE-017，共72行；本交接另更新 `.ai/SESSION_HANDOFF.md`。没有修改脚本、测试、README、URDF 或 rosbag。
+- 验证结果：ISSUE-015 段落与修改前 Git 版本精确匹配；`git diff --check` 通过；本次未运行代码测试，因为只记录待开发 Issue。
+- 当前 Git 状态：分支 `main`，HEAD `093dfa2`；`.ai/TASK.md` 和本交接文件有未提交文档修改；`logs/gym-mcp.2026-08-27.log.gz` 为本次开始开发前已存在的未跟踪文件，未修改、未纳入。
+- 未完成事项：ISSUE-017 尚未开始开发，没有创建特性分支，没有修改脚本或生成修复 bag，没有提交或推送。
+- 下一步：新对话先读取本文件、`.ai/TASK.md`、`.ai/PROGRESS.md` 和相关规范；用户明确要求开始后，检查无其他 `IN_PROGRESS` Issue，将 ISSUE-017 标为 `IN_PROGRESS`，创建 `codex/issue-017-interactive-tf-forest` 分支，按六个阶段逐段实现和测试，所有生成物仅写入 `test_output/issue-017/`。
+- 注意事项/风险：单位挂载表示调用者确认两 frame 原点和方向重合，脚本不能从拓扑自动恢复真实外参；不得把现有未跟踪日志或其他本地变更混入 ISSUE-017 交付。
