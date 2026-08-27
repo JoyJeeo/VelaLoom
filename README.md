@@ -71,3 +71,21 @@ conda run -n VelaLoom python scripts/sync_frameid.py \
 ```bash
 conda run -n VelaLoom python -m unittest -v tests/test_sync_frameid_batch.py
 ```
+
+## 统一 rosbag TF 输出
+
+`scripts/unify_rosbag_tf.py` 将单个 ROS1 bag 复制到新的输出路径，并把 `/tf_static` 重建为一条
+去重、冲突检查后的 latched 消息。脚本从 Foxglove URDF 读取七条相机安装 fixed joint，加入
+`camera_base → cam_h_link`、`l_d405_camera_base → cam_l_link`、`r_d405_camera_base → cam_r_link`
+三条单位桥接；原始 `/tf` 和所有非 TF 消息按原始字节复制，输入 bag 始终只读。
+
+```bash
+conda run -n VelaLoom python scripts/unify_rosbag_tf.py \
+  --input rosbag/<input>.bag \
+  --output rosbag/unified/<input>.bag \
+  --urdf urdf_kuavo5/urdf/biped_s300053_foxglove.urdf
+```
+
+默认会拒绝覆盖输出；使用 `--overwrite` 才允许覆盖，`--dry-run` 只扫描和验证而不创建输出。
+若普通消息仍引用 `head_camera_base` 或 `head_camera_depth`，脚本会失败并列出 topic；确认需要
+旧链时显式加 `--keep-legacy-head-chain`。
