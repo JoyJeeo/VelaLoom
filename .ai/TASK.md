@@ -226,7 +226,7 @@
 
 ### ISSUE-016：将 URDF 全部 fixed joint 交互式写入 rosbag
 
-- 状态：`TODO`
+- 状态：`DONE`
 - 优先级：P0
 - 目标：新增一个独立脚本，读取传入 URDF 中全部 `type="fixed"` joint，将每条 `parent link → child link` 转换为静态 TF；结合传入 ROS1 bag 中已有的 `/tf_static` 和 `/tf` 进行冲突分析，由调用者交互式决定每个冲突的处理方式，随后将最终唯一静态边集合记录到新的输出 bag。
 - 依赖：无；本 Issue 不依赖 ISSUE-015，也不导入、调用或修改 `unify_rosbag_tf.py`、`sync_frameid.py` 等已有脚本。
@@ -290,23 +290,23 @@
   - 存在 1 条结构冲突：URDF 为 `waist_yaw_link → waist_camera`，bag 为 `waist_camera_base → waist_camera`，必须在转换时由调用者选择；
   - 存在名称相似警告：URDF `head_rader` 与 bag `head_radar`，只报告，不自动合并。
 - 阶段门禁：
-  - [ ] 阶段一：冻结独立 CLI、全量 fixed joint 解析规则、冲突分类、交互文案、默认 `[Y/n]` 和决策 JSON schema；使用真实 URDF/bag 只读复核 26/15/10/1 基线；
-  - [ ] 阶段二：先实现全量 URDF fixed 解析和纯内存冲突分析；用最小 URDF/bag 夹具验证缺失、一致、位姿冲突、多 parent 和动态冲突；
-  - [ ] 阶段三：实现交互选择、二次危险确认、默认 `Y` 最终确认、EOF/非 TTY 安全失败及 decisions 文件保存/重放；通过模拟 stdin 自动化测试；
-  - [ ] 阶段四：实现规范化 latched `/tf_static`、按决策改写动态 TF、原子输出和回读验证；验证输入 SHA-256、消息/连接不变量和失败清理；
-  - [ ] 阶段五：使用指定真实 URDF/bag 先 dry-run，再由调用者完成腰部冲突交互选择后生成独立输出，检查最终 TF 树、fixed 覆盖率和可读性；
-  - [ ] 阶段六：完整测试、语法检查、`git diff --check`，同步 README、DECISIONS、PROGRESS 和 CHANGELOG。
+  - [x] 阶段一：冻结独立 CLI、全量 fixed joint 解析规则、冲突分类、交互文案、默认 `[Y/n]` 和决策 JSON schema；使用真实 URDF/bag 只读复核 26/15/10/1 基线；
+  - [x] 阶段二：先实现全量 URDF fixed 解析和纯内存冲突分析；用最小 URDF/bag 夹具验证缺失、一致、位姿冲突、多 parent 和动态冲突；
+  - [x] 阶段三：实现交互选择、二次危险确认、默认 `Y` 最终确认、EOF/非 TTY 安全失败及 decisions 文件保存/重放；通过模拟 stdin 自动化测试；
+  - [x] 阶段四：实现规范化 latched `/tf_static`、按决策改写动态 TF、原子输出和回读验证；验证输入 SHA-256、消息/连接不变量和失败清理；
+  - [x] 阶段五：使用指定真实 URDF/bag 先 dry-run，再由调用者完成腰部冲突交互选择后生成独立输出，检查最终 TF 树、fixed 覆盖率和可读性；
+  - [x] 阶段六：完整测试、语法检查、`git diff --check`，同步 README、DECISIONS、PROGRESS 和 CHANGELOG。
 - 验收标准：
-  - [ ] 新脚本与既有脚本无导入、调用或相机桥接依赖；
-  - [ ] 能从传入 URDF 读取并报告全部合法 fixed joint，当前 URDF 为 26 条；
-  - [ ] 无冲突边和完全一致边不需要人工判断，最终各只出现一次；
-  - [ ] 每个真实冲突都由调用者交互或已校验 decisions 文件明确选择，脚本不自动选边；
-  - [ ] 最终写出提示为 `[Y/n]` 且默认 `Y`，冲突选择没有默认值；
-  - [ ] 调用者中止、EOF、决策不完整或输入哈希不匹配时不创建输出；
-  - [ ] 输出只有一条 latched `/tf_static`，每个 child 只有一个最终 parent；
-  - [ ] 未经选择修改的动态 `/tf`、全部非 TF topic 和输入文件保持不变；
-  - [ ] decisions 文件可审计、可重放且不会跨输入误用；
-  - [ ] 自动化测试、真实数据验证、语法检查和 `git diff --check` 全部通过，无未解释跳过。
+  - [x] 新脚本与既有脚本无导入、调用或相机桥接依赖；
+  - [x] 能从传入 URDF 读取并报告全部合法 fixed joint，当前 URDF 为 26 条；
+  - [x] 无冲突边和完全一致边不需要人工判断，最终各只出现一次；
+  - [x] 每个真实冲突都由调用者交互或已校验 decisions 文件明确选择，脚本不自动选边；
+  - [x] 最终写出提示为 `[Y/n]` 且默认 `Y`，冲突选择没有默认值；
+  - [x] 调用者中止、EOF、决策不完整或输入哈希不匹配时不创建输出；
+  - [x] 输出只有一条 latched `/tf_static`，每个 child 只有一个最终 parent；
+  - [x] 未经选择修改的动态 `/tf`、全部非 TF topic 和输入文件保持不变；
+  - [x] decisions 文件可审计、可重放且不会跨输入误用；
+  - [x] 自动化测试、真实数据验证、语法检查和 `git diff --check` 全部通过，无未解释跳过。
 
 ## 新增 Issue 模板
 

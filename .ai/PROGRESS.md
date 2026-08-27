@@ -1,6 +1,6 @@
 # 开发进展
 
-更新时间：2026-08-26
+更新时间：2026-08-27
 
 ## 已完成
 
@@ -97,3 +97,19 @@
 - 结果：全部通过；未新增依赖，输入只读和既有 TF 安全边界保持不变。
 - 变更文件：`scripts/sync_frameid.py`、`tests/test_sync_frameid_batch.py`、`README.md`、`.ai/TASK.md`、`.ai/DECISIONS.md`、`.ai/PROGRESS.md`、`CHANGELOG.md`。
 - 限制：当前 CLI 无裸子命令，映射边界定义为下一个以 `--` 开头的选项；未来新增子命令时需单独设计解析边界。
+
+## ISSUE-016 测试记录（2026-08-27）
+
+- 测试等级：L3。
+- 变更范围：新增独立模块 `scripts/add_urdf_fixed_tf.py` 和 `tests/test_add_urdf_fixed_tf.py`；同步 `README.md`、`DECISIONS.md`、`TASK.md` 和 `CHANGELOG.md`。没有导入或修改 ISSUE-015 脚本，没有修改输入 URDF 或 rosbag。
+- 阶段一：冻结 CLI、全量 fixed joint 解析、冲突选项、最终 `[Y/n]` 默认值和 decisions schema；指定真实 URDF/bag 只读复核为 26 条 fixed、15 条一致、10 条缺失、1 条腰部 parent 冲突。
+- 阶段二：实现 URDF fixed 解析和纯内存 bag 分析；4 项测试覆盖缺失、一致、位姿冲突、不同 parent、bag 多 parent、动态 child、非法数值和 URDF 多 parent。
+- 阶段三：实现无默认冲突提示、动态删除完整 `YES` 二次确认、默认 `Y` 最终确认、EOF 安全中止和 decisions 保存/重放；8 项累计测试通过，哈希或候选集合变化会拒绝重放。
+- 阶段四：实现唯一 latched `/tf_static`、显式动态 transform 删除、同目录临时 bag、回读验证和原子替换；12 项模块测试通过，验证输入 SHA-256、未修改动态/非 TF 原始字节、连接元数据、覆盖保护及失败清理。
+- 阶段五：对 `rosbag/A03-A22-H-C-01-004-5_140-dex_hand-20260820190611-53-3ea2cb-v003.bag` 和 `urdf_kuavo5/urdf/biped_s300053_foxglove.urdf` 执行真实 dry-run；调用者对 `waist_camera` 冲突选择 `keep_bag`，保留 `waist_camera_base → waist_camera`，随后完成交互写出和 decisions 非交互重放。
+- 真实输出：`test_output/issue-016/real-output.bag`（Git 忽略）含 149,771 条消息和单条 latched `/tf_static`，其中 42 条静态 transform；URDF fixed 覆盖率 25/26；未删除或修改动态 transform。`test_output/issue-016/real-decisions.json` 保存 `waist_camera=keep_bag` 及输入绑定摘要。
+- 数据安全：输入 bag SHA-256 在验证后仍为 `8a527e4811fc0a078f107670dd35e3c7b35d45fe7de0d94b5ee88c69a8e542ed`，URDF SHA-256 为 `ba49bc66b484da17bee2a3b48444ada914e9252bf9b396009a36c13dcb9532e5`。独立流哈希确认 56,292 条 `/tf` 和 93,478 条非 TF 消息的原始字节、时间戳及连接元数据保持不变。
+- TF 验证：输出静态 child 唯一；合并动态/静态后 72 个唯一 child 均只有一个 parent。根集合为 `{odom, cam_h_link, cam_l_link, cam_r_link}`，符合本 Issue 明确不加入 ISSUE-015 三条相机单位桥接的边界；`head_rader`/`head_radar` 仅警告且没有自动合并。
+- 最终门禁：`TMPDIR="$PWD/test_output/issue-016/tmp" PYTHONPYCACHEPREFIX="$PWD/test_output/issue-016/pycache" conda run -n VelaLoom python -m unittest discover -s tests -v` 通过（27 项）；全部脚本/测试 `py_compile`、`add_urdf_fixed_tf.py --help` 和 `git diff --check` 通过。
+- 测试产物：保留 `test_output/issue-016/real-output.bag` 和 `real-decisions.json` 供人工复核；精确清理本次 `tmp/` 与 `pycache/` 子目录，不清理其他 `test_output/` 内容。
+- 依赖和限制：未新增依赖，继续使用 `VelaLoom` 环境中的 `rosbags 0.11.5`。本工具不建立 `cam_h/l/r` 相机桥接，因此这三棵相机树仍是独立根；这是 ISSUE-016 的明确范围，不是未解释失败。

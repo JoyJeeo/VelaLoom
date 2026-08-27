@@ -10,4 +10,5 @@
 - **ISSUE-003**：明确 `sync_frameid.py` 暂不支持通用 `/tf`、`/tf_static` frame 重写；遇到 TF 映射时安全失败并保持输入不变。
 - **ISSUE-004**：`sync_frameid.py` 的 `--map` 现在可一次接收多个连续映射，同时兼容重复 `--map` 写法，减少批量相机映射命令的重复书写。
 - **ISSUE-015**：新增 `unify_rosbag_tf.py`，从 URDF 补齐相机安装固定边，加入三条单位相机桥接，去重并重建 latched `/tf_static`，同时保持动态 `/tf`、非 TF 消息和输入 bag 不变。
+- **ISSUE-016**：新增独立的 `add_urdf_fixed_tf.py`，读取 URDF 全部 fixed joint，对静态、动态和多 parent 冲突要求交互或哈希绑定 decisions 明确选择，再原子写出唯一 latched `/tf_static`；避免自动猜测 frame 语义或误删动态 TF。
 - **测试输出规范**：所有开发测试生成的文件统一写入仓库根目录 `test_output/`，并将该目录排除在 Git 之外，避免系统临时目录和输入数据目录散落测试产物。

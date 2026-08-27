@@ -89,3 +89,49 @@ conda run -n VelaLoom python scripts/unify_rosbag_tf.py \
 默认会拒绝覆盖输出；使用 `--overwrite` 才允许覆盖，`--dry-run` 只扫描和验证而不创建输出。
 若普通消息仍引用 `head_camera_base` 或 `head_camera_depth`，脚本会失败并列出 topic；确认需要
 旧链时显式加 `--keep-legacy-head-chain`。
+
+## 将 URDF 全部 fixed joint 写入 rosbag
+
+`scripts/add_urdf_fixed_tf.py` 是独立的交互式转换工具。它读取传入 URDF 中全部直接
+`type="fixed"` joint，扫描输入 ROS1 bag 的 `/tf_static` 和 `/tf`，把 fixed joint 分为已存在、
+缺失和冲突三类。输入 URDF 与 bag 始终只读；输出必须是另一个 `.bag` 文件。
+
+先使用 dry-run 查看分类和冲突，不会交互、创建输出或写 decisions 文件：
+
+```bash
+conda run -n VelaLoom python scripts/add_urdf_fixed_tf.py \
+  --input rosbag/<input>.bag \
+  --output test_output/issue-016/output.bag \
+  --urdf urdf_kuavo5/urdf/biped_s300053_foxglove.urdf \
+  --dry-run
+```
+
+交互运行时要让 conda 保留 TTY。静态冲突可选择使用 URDF、保留 bag 或中止；动态冲突可选择
+保留动态 TF，或者再次完整输入 `YES` 后删除对应动态 transform 并使用 URDF。所有冲突选择都
+没有默认值。只有最终提示 `Proceed with writing OUTPUT.bag? [Y/n]` 默认 `Y`：
+
+```bash
+conda run --no-capture-output -n VelaLoom python scripts/add_urdf_fixed_tf.py \
+  --input rosbag/<input>.bag \
+  --output test_output/issue-016/output.bag \
+  --urdf urdf_kuavo5/urdf/biped_s300053_foxglove.urdf \
+  --decisions-out test_output/issue-016/decisions.json
+```
+
+`--decisions-out` 保存输入 bag/URDF 的 SHA-256、完整冲突候选、选择和动态删除影响。之后可在相同
+输入上校验并重放；输入哈希、候选集合或影响计数变化时会失败。非交互写出还必须显式使用
+`--yes`，它只能跳过最终写出确认，不能替代未解决的冲突：
+
+```bash
+conda run -n VelaLoom python scripts/add_urdf_fixed_tf.py \
+  --input rosbag/<input>.bag \
+  --output test_output/issue-016/output.bag \
+  --urdf urdf_kuavo5/urdf/biped_s300053_foxglove.urdf \
+  --decisions-in test_output/issue-016/decisions.json \
+  --yes
+```
+
+输出把最终唯一静态边写成一条 latched `/tf_static`；未经明确选择删除的 `/tf` 和全部非 TF 消息
+保持原始序列化内容、时间戳和连接元数据。默认拒绝覆盖，只有 `--overwrite` 才允许原子替换输出。
+本工具不会加入 `unify_rosbag_tf.py` 的三条 `cam_h/l/r` 单位桥接，也不会自动合并
+`head_rader`/`head_radar` 等相似名称。
