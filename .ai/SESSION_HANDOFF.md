@@ -106,3 +106,26 @@
 - 未完成事项：`ISSUE-005` 仍为 `TODO`；`ISSUE-015` 尚未开始；没有生成统一 TF 输出 bag，也没有在 `ros1_noetic` 容器中执行 ROS 回放或 Foxglove 验收。
 - 下一步：新对话开启后先读取本文件、`.ai/TASK.md`、`.ai/PROGRESS.md`，确认 `ISSUE-005`/`ISSUE-015` 串行依赖；开始 ROS 操作前检查 `ros1_noetic` 挂载路径，再按 ISSUE-015 阶段一设计并实现 `scripts/unify_rosbag_tf.py`。
 - 注意事项/风险：三条单位桥接是用户确认的拓扑方案，但仍代表坐标系重合假设；头部深度图当前使用 `cam_h_color_optical_frame`、腰部相机命名、雷达拼写以及 12→20 手指关节映射尚未解决；工作区既有 `.ai/*` 修改、`logs/` 和 `biped_s300053_foxglove_副本.urdf` 删除状态必须保留，不能误覆盖或纳入无关提交。
+
+## SESSION-20260827-02
+
+- 日期：2026-08-27
+- 对话目标：完成 ISSUE-015 的统一 TF 输出 bag 脚本和真实数据验证；澄清 Foxglove/URDF/TF 发布关系；规划独立的全量 URDF fixed joint 交互写入脚本；统一测试输出目录；提交并推送仓库全部既有改动。
+- 已完成：
+  - 文件：新增 `scripts/unify_rosbag_tf.py`、`tests/test_unify_rosbag_tf.py`；更新 `README.md`、`CHANGELOG.md`、`.ai/*`、`AGENTS.md`、`.gitignore`；删除重复文件 `urdf_kuavo5/urdf/biped_s300053_foxglove_副本.urdf`；提交 3 个 `logs/gym-mcp.*.log.gz` 压缩日志。
+  - Issue：`ISSUE-015` 已实现并标记为 `DONE`；新增 `ISSUE-016：将 URDF 全部 fixed joint 交互式写入 rosbag`，状态为 `TODO`，本次未实现该脚本。
+  - ISSUE-015 行为：保持动态 `/tf` 和非 TF 消息原始序列化内容，去重并重建单条 latched `/tf_static`，从 URDF 读取 7 条相机 fixed joint，加入三条 `cam_h/l/r` 单位桥接，执行旧头部链引用、位姿冲突、多 parent 和唯一 `odom` 根检查。
+  - ISSUE-016 方案：目标脚本为 `scripts/add_urdf_fixed_tf.py`，与已有脚本无导入或相机桥接依赖；读取 URDF 全部 fixed joint；冲突由调用者交互选择；最终提示为 `Proceed with writing OUTPUT.bag? [Y/n]` 且 Enter 默认 `Y`；冲突选择没有默认值；支持 decisions JSON 保存和校验重放。
+  - 测试输出规范：所有测试夹具、临时 bag、转换输出、日志、报告等统一写入仓库根目录 `test_output/`，按 Issue/模块分子目录；`/test_output/` 已加入 `.gitignore`；禁止未来测试使用系统 `/tmp` 或输入数据目录。
+- 技术细节：
+  - 运行环境：非 ROS 工具和测试使用 conda `VelaLoom`；依赖继续使用 `rosbags 0.11.5`。
+  - 指定只读输入：`rosbag/A03-A22-H-C-01-004-5_140-dex_hand-20260820190611-53-3ea2cb-v003.bag` 与 `urdf_kuavo5/urdf/biped_s300053_foxglove.urdf`。
+  - 真实 ISSUE-015 输出：输入 149,790 条消息；输出 149,771 条；20 条原始 `/tf_static` 消息规范化为 1 条、含 40 条唯一静态边；动态 `/tf` 保持 56,292 条消息和 30 条边；最终根集合为 `{odom}`。
+  - 输入 SHA-256 前后均为 `8a527e4811fc0a078f107670dd35e3c7b35d45fe7de0d94b5ee88c69a8e542ed`。
+  - 全量 fixed 只读基线：URDF 有 26 条 fixed joint；15 条与 bag 已有边一致，10 条为缺失新边，1 条结构冲突为 URDF `waist_yaw_link → waist_camera` 对 bag `waist_camera_base → waist_camera`；`head_rader`/`head_radar` 仅作为相似名称警告。
+  - ROS1 容器：`ros1_noetic` 绑定源 `/Volumes/yuto2` 在当前宿主机不存在，容器无法启动；因此没有完成原生 `rosbag info` 和 Foxglove 人工回放，已用 `rosbags` 完成真实输出回读和 TF 树检查。
+- 验证结果：最终在 `test_output/` 下运行完整测试，共 15 项通过；Python 语法检查和 `git diff --check` 通过；原始 bag 和 URDF 未修改。
+- 提交和推送：`71a146e feat: add unified rosbag TF conversion`、`27b18fb docs: update AI workflow and TF issue plans`、`b1d7220 chore: clean duplicate URDF and archive logs` 已推送到 `origin/main`；推送后本地与远端均指向 `b1d7220`。
+- 未完成事项：`ISSUE-016` 尚未开始开发；`ISSUE-005` 至 `ISSUE-014` 中除 ISSUE-015 外仍按 `.ai/TASK.md` 状态等待；ROS1 原生和 Foxglove 人工验收等待容器挂载修复。
+- 下一步：新对话开始后先读取本文件、`.ai/TASK.md` 和 `.ai/PROGRESS.md`；若用户要求继续，应按串行规则将 ISSUE-016 标为 `IN_PROGRESS`，创建独立模块并严格把所有测试输出写入 `test_output/issue-016/`。
+- 注意事项/风险：ISSUE-016 不得复用 ISSUE-015 的三条相机单位桥接；任何 static/dynamic、位姿或多 parent 冲突都必须由调用者交互或匹配当前输入哈希的 decisions 文件明确决定，脚本不得自动选择；最终写出确认默认 `Y` 只适用于写出步骤，不适用于冲突选择。
