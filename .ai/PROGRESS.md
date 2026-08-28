@@ -147,3 +147,18 @@
 - 验证命令：`TMPDIR="$PWD/test_output/issue-019/tmp" PYTHONPYCACHEPREFIX="$PWD/test_output/issue-019/pycache" conda run -n VelaLoom python -m unittest discover -s tests -v`、全部脚本/测试 `py_compile`、`git diff --check`。
 - 测试产物：本轮生成文件仅位于 `test_output/issue-019/`，最终精确清理 `tmp/` 和 `pycache/`。
 - 依赖和限制：未新增依赖；终端需支持 Unicode 线框字符才能按设计显示。
+
+## ISSUE-020 测试记录（2026-08-29）
+
+- 测试等级：L3。
+- 变更范围：新增独立模块 `scripts/add_dexhand_tf.py` 和 `tests/test_add_dexhand_tf.py`；同步 README、DECISIONS、TASK、PROGRESS 和 CHANGELOG；未修改其他转换脚本、URDF 或输入 bag。
+- 阶段一至二：冻结 CLI、12→20 名称映射、错误策略、时间戳和输出不变量；实现 URDF 目标 revolute joint 解析、`0/50/100` 限位映射、axis 归一化和 `T_origin*R_axis(q)`，7 项阶段测试通过。
+- 阶段三：实现状态 topic、TF 和完整输入 bag 只读扫描；覆盖状态缺失/重复/非有限/时间非法、目标 child 冲突、手掌不可达、输入多 parent 和环路，累计 11 项测试通过且全部失败路径不创建输出。
+- 阶段四：实现逐状态 20-transform `/tf`、独立非 latched 连接、原始记录流式保真摘要、唯一临时 bag、写后回读和原子替换；累计 14 项测试通过，覆盖默认/显式覆盖、同路径保护及注入验证失败清理。
+- 真实输入：`test_output/01.bag`（SHA-256 `52975ffff4c1d3364e2d3323245f2ded3b6afee142bd4634d930a720b44748fa`）和 `urdf_kuavo5/urdf/biped_s300053_foxglove.urdf`（SHA-256 `ba49bc66b484da17bee2a3b48444ada914e9252bf9b396009a36c13dcb9532e5`），两者只读。
+- 真实 dry-run：149,771 条输入消息、34.085906 秒、6,673 条状态（195.770 Hz）、单一稳定 12 通道名称布局、0 个异常状态、0 个裁剪和 0 个 header 时间回退；20 个目标 joint 完整，左右手掌可达，无目标 TF 冲突，合并图 95 条边且无环/无多 parent。
+- 真实输出：保留 Git 忽略的 `test_output/issue-020/01_dexhand_tf.bag`，新增 6,673 条 `/tf` 和 133,460 个手指 transform，总消息数 156,444；脚本回读确认每条新增消息恰有 20 个唯一 child，parent/位姿/时间与 URDF 和状态反馈一致，原始消息及连接元数据保持不变。
+- ROS1 交叉验证：`ros1_noetic` 容器通过宿主仓库到 `/workspace/VelaLoom` 的读写挂载运行；原生 `rosbag info` 成功读取输出，报告 656.4 MB、156,444 条消息、`/tf` 62,965 条（2 个连接）和 `/tf_static` 1 条。
+- Foxglove：成功载入输出 bag；Transform Tree 显示从 `l_palm/r_palm` 到 20 个 prox/dist 手指 frame 的完整层级，3D 面板加载机器人模型。调用者已于 2026-08-29 确认左右手张合方向、部分闭合反馈、拖动和循环播放正确，身体、手臂和头部未受影响。
+- 最终自动门禁：模块 14 项和全仓 53 项测试通过；全部脚本/测试 `py_compile`、CLI `--help`、交付代码无 TODO/FIXME、真实输出独立回读和 `git diff --check` 通过。可选 `ruff` 未安装在项目环境，因此未新增依赖或将其列为门禁。
+- 依赖和产物：未新增依赖，继续使用 `VelaLoom` 的 `rosbags`；所有新夹具、缓存和真实输出均位于 `test_output/issue-020/`。已精确清理 `tmp/`、`pycache/` 和 `unit/`，仅保留 `01_dexhand_tf.bag`。自动化、ROS1 和 Foxglove 门禁全部通过，ISSUE-020 已标记为 `DONE`。

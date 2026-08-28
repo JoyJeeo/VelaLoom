@@ -547,7 +547,7 @@
 
 ### ISSUE-020：根据灵巧手反馈补充 20 条动态指节 TF
 
-- 状态：`TODO`
+- 状态：`DONE`
 - 优先级：P0
 - 目标：新增独立脚本 `scripts/add_dexhand_tf.py`，从 ROS1 bag 的 `/dexhand/state.position` 读取左右手实际反馈，按 ISSUE-011 已确认的 12→20 线性耦合模型和传入 URDF 的运动学定义计算左右手 20 条动态指节 TF，并写入新的输出 bag，使 Foxglove 在 `Transforms` 模式下显示手指实际反馈姿态。
 - 依赖：ISSUE-011（映射和近似边界已确认）、ISSUE-016（固定关节补全工具已完成）；新脚本不得导入或调用 `add_urdf_tf_static.py`，只要求输入 TF 树中左右手掌可从机器人主体到达。
@@ -608,7 +608,7 @@
 
 #### 当前真实数据基线
 
-- 指定分析输入：`test_output/issue-017/01.bag` 和 `urdf_kuavo5/urdf/biped_s300053_foxglove.urdf`。
+- 指定分析输入：`test_output/01.bag` 和 `urdf_kuavo5/urdf/biped_s300053_foxglove.urdf`。
 - bag 时长约 34.1 秒，共 149,771 条消息；`/dexhand/state` 为 `sensor_msgs/JointState`，共 6,673 条，平均约 196 Hz，名称集合稳定为左右手各 6 个通道。
 - 当前联合 TF 中存在 `zarm_l7_link → l_palm` 和 `zarm_r7_link → r_palm` 固定边，但不存在任何手指动态边；因此 Foxglove `Transforms` 模式只能显示到手掌。
 - 对当前 bag，若 6,673 条状态全部有效，预计新增 6,673 条 `/tf` 消息和 133,460 个 `TransformStamped`，输出总消息数预计为 156,444。
@@ -616,26 +616,26 @@
 
 #### 阶段门禁
 
-- [ ] 阶段一：冻结 CLI、12→20 映射表、反馈错误策略、URDF 目标集合、时间戳规则、输出不变量和最小测试夹具；先完成纯函数接口和预期样例。
-- [ ] 阶段二：实现 URDF 手部 revolute joint 解析、名称驱动的状态提取、`0/50/100` 角度映射及 axis-angle 变换；立即完成对应单元测试。
-- [ ] 阶段三：实现输入 bag/TF 只读扫描、20 个目标 child 冲突检测、手掌可达性、状态完整性和 dry-run 摘要；立即验证全部失败路径不创建输出。
-- [ ] 阶段四：实现逐状态生成包含 20 个变换的动态 `/tf`、原始消息保真复制、覆盖保护、临时输出、原子替换和写后回读；立即完成最小 bag 集成测试。
-- [ ] 阶段五：在 `VelaLoom` 环境中对指定真实 bag 先 dry-run，再生成 `test_output/issue-020/` 下的独立输出；使用 `rosbags` 检查消息/连接/字节不变量，如执行原生 ROS 检查则按规定使用已验证挂载的 `ros1_noetic` 容器。
-- [ ] 阶段六：使用 Foxglove `Transforms` 模式人工验收完整手指链、张开/闭合方向、部分闭合反馈、拖动和循环播放；身体、手臂、头部显示必须与转换前一致。
-- [ ] 阶段七：运行模块测试、全仓回归、全部脚本/测试语法检查和 `git diff --check`；按 DOD 同步 README、DECISIONS、PROGRESS 和 CHANGELOG。
+- [x] 阶段一：冻结 CLI、12→20 映射表、反馈错误策略、URDF 目标集合、时间戳规则、输出不变量和最小测试夹具；先完成纯函数接口和预期样例。
+- [x] 阶段二：实现 URDF 手部 revolute joint 解析、名称驱动的状态提取、`0/50/100` 角度映射及 axis-angle 变换；立即完成对应单元测试。
+- [x] 阶段三：实现输入 bag/TF 只读扫描、20 个目标 child 冲突检测、手掌可达性、状态完整性和 dry-run 摘要；立即验证全部失败路径不创建输出。
+- [x] 阶段四：实现逐状态生成包含 20 个变换的动态 `/tf`、原始消息保真复制、覆盖保护、临时输出、原子替换和写后回读；立即完成最小 bag 集成测试。
+- [x] 阶段五：在 `VelaLoom` 环境中对指定真实 bag 先 dry-run，再生成 `test_output/issue-020/` 下的独立输出；使用 `rosbags` 检查消息/连接/字节不变量，如执行原生 ROS 检查则按规定使用已验证挂载的 `ros1_noetic` 容器。
+- [x] 阶段六：使用 Foxglove `Transforms` 模式人工验收完整手指链、张开/闭合方向、部分闭合反馈、拖动和循环播放；身体、手臂、头部显示必须与转换前一致。
+- [x] 阶段七：运行模块测试、全仓回归、全部脚本/测试语法检查和 `git diff --check`；按 DOD 同步 README、DECISIONS、PROGRESS 和 CHANGELOG。
 
 #### 验收标准
 
-- [ ] 新脚本为独立模块 `scripts/add_dexhand_tf.py`，没有导入或修改其他转换脚本。
-- [ ] 只使用 `/dexhand/state.position` 反馈，并按消息名称正确处理乱序数组；不读取命令 topic 作为姿态。
-- [ ] `0/50/100` 分别映射到 URDF lower、中点和 upper，四指单通道同时驱动对应 MCP/PIP，左右镜像由 URDF axis 正确表达。
-- [ ] 每条有效状态消息生成一条含 20 个动态变换的 `/tf`；parent、child、translation、rotation 和时间戳均通过自动化验证。
-- [ ] 输入缺少目标 joint、手掌不可达、状态字段异常、非有限数值、已有目标 TF、多 parent 或环路时安全失败且不创建输出。
-- [ ] 输入 bag 和 URDF 不变；原始动态 `/tf`、`/tf_static` 和全部非 TF 消息的原始字节、时间戳、顺序、数量及连接元数据保持不变。
-- [ ] dry-run、默认覆盖保护、显式 `--overwrite`、输入输出同路径保护、失败清理、原子替换和写后回读全部通过。
-- [ ] 当前真实 bag 输出包含预期 6,673 条新增 `/tf` 和 133,460 个手指变换，联合 TF 图无环、无多 parent、20 个手指 child 均可从左右手掌到达。
-- [ ] Foxglove 使用同一 URDF、`Transforms` 模式及 `base_link`/`odom` Fixed frame 时，手指按实际反馈运动；反馈未到 `100` 时不会被显示成完全闭合；身体、手臂和头部不受影响。
-- [ ] 所有测试输出仅位于 `test_output/issue-020/`；模块测试、全仓回归、语法检查、真实数据验证、Foxglove 人工验收和 `git diff --check` 全部通过后才能标记 `DONE`。
+- [x] 新脚本为独立模块 `scripts/add_dexhand_tf.py`，没有导入或修改其他转换脚本。
+- [x] 只使用 `/dexhand/state.position` 反馈，并按消息名称正确处理乱序数组；不读取命令 topic 作为姿态。
+- [x] `0/50/100` 分别映射到 URDF lower、中点和 upper，四指单通道同时驱动对应 MCP/PIP，左右镜像由 URDF axis 正确表达。
+- [x] 每条有效状态消息生成一条含 20 个动态变换的 `/tf`；parent、child、translation、rotation 和时间戳均通过自动化验证。
+- [x] 输入缺少目标 joint、手掌不可达、状态字段异常、非有限数值、已有目标 TF、多 parent 或环路时安全失败且不创建输出。
+- [x] 输入 bag 和 URDF 不变；原始动态 `/tf`、`/tf_static` 和全部非 TF 消息的原始字节、时间戳、顺序、数量及连接元数据保持不变。
+- [x] dry-run、默认覆盖保护、显式 `--overwrite`、输入输出同路径保护、失败清理、原子替换和写后回读全部通过。
+- [x] 当前真实 bag 输出包含预期 6,673 条新增 `/tf` 和 133,460 个手指变换，联合 TF 图无环、无多 parent、20 个手指 child 均可从左右手掌到达。
+- [x] Foxglove 使用同一 URDF、`Transforms` 模式及 `base_link`/`odom` Fixed frame 时，手指按实际反馈运动；反馈未到 `100` 时不会被显示成完全闭合；身体、手臂和头部不受影响。
+- [x] 所有测试输出仅位于 `test_output/issue-020/`；模块测试、全仓回归、语法检查、真实数据验证、Foxglove 人工验收和 `git diff --check` 全部通过后才能标记 `DONE`。
 
 ## 新增 Issue 模板
 

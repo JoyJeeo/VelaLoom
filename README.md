@@ -140,3 +140,34 @@ conda run -n VelaLoom python scripts/add_urdf_tf_static.py \
 保持原始序列化内容、时间戳和连接元数据。默认拒绝覆盖，只有 `--overwrite` 才允许原子替换输出。
 本工具不会加入 `unify_rosbag_tf.py` 的三条 `cam_h/l/r` 单位桥接，也不会自动合并
 `head_rader`/`head_radar` 等相似名称。
+
+## 根据灵巧手反馈补充动态手指 TF
+
+`scripts/add_dexhand_tf.py` 从 ROS1 bag 的 `/dexhand/state` `JointState.position` 读取左右手各 6 个
+具名反馈通道，并按 URDF 中 20 个手指 revolute joint 的 parent、child、origin、axis 和 limit 生成
+动态 `/tf`。输入 bag 和 URDF 始终只读，输出必须是另一个 `.bag` 文件。
+
+先执行完整 dry-run；它会报告反馈频率、实际名称、每个通道的范围和裁剪数、时间戳回退、20 个
+目标关节、TF 冲突和预计新增消息数，但不会创建输出：
+
+```bash
+conda run -n VelaLoom python scripts/add_dexhand_tf.py \
+  --input test_output/01.bag \
+  --output test_output/issue-020/01_dexhand_tf.bag \
+  --urdf urdf_kuavo5/urdf/biped_s300053_foxglove.urdf \
+  --dry-run
+```
+
+去掉 `--dry-run` 后正式写出。默认拒绝覆盖已有输出，只有显式 `--overwrite` 才允许在临时 bag
+写完并回读验证成功后原子替换。`--state-topic` 可修改反馈 topic，默认是 `/dexhand/state`。
+
+映射使用消息中的 joint name，不依赖数组顺序。每侧 `thumb_aux → thumbCMC`、
+`thumb → thumbMCP`，`index/middle/ring/pinky` 各自同时驱动对应的 MCP/PIP；反馈按
+`u=clip(position/100,0,1)` 归一化，再使用 `q=lower+u(upper-lower)` 映射到 URDF 限位。左右镜像
+由 URDF axis 表达，不额外反号。四指单通道同时驱动两个关节是可视化近似，不代表恢复了接触
+状态下两个独立的真实角度。
+
+每条有效反馈新增一条含 20 个 transform 的独立、非 latched `/tf` 消息；bag 时间使用反馈记录
+时间，header 时间使用反馈 header，零时间回退到记录时间。目标 child 已有 TF、手掌不可从
+`base_link` 到达、状态缺失/重复/非有限、TF 多 parent 或环路时会在创建输出前失败。写后回读
+还会验证原始记录的序列化字节、时间戳、顺序和连接元数据没有变化。

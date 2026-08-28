@@ -220,5 +220,6 @@ __marimo__/
 # Local robot recordings and macOS metadata
 /rosbag/
 /test_output/
+/logs/gym-mcp.*.log.gz
 ._*
 .DS_Store
