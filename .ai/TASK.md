@@ -63,15 +63,15 @@
 
 ### ISSUE-005：统一 TF 发布权和根节点策略
 
-- 状态：`TODO`
+- 状态：`DONE`
 - 优先级：P0
 - 目标：决定 `odom`、`base_link` 的根节点关系，明确原始 `/tf`、`/tf_static` 与 `robot_state_publisher` 的唯一发布权。
 - 依赖：无
 - 修改边界：仅设计和外部回放方案，不修改仓库代码。
 - 验收标准：
-  - [ ] 明确唯一 TF 根和每类 TF 的唯一发布者；
-  - [ ] 明确播放时保留/过滤的 TF topic；
-  - [ ] 没有重复 child frame、TF 冲突或时间回退。
+  - [x] 明确唯一 TF 根和每类 TF 的唯一发布者；
+  - [x] 明确播放时保留/过滤的 TF topic；
+  - [x] 没有重复 child frame、TF 冲突或时间回退。
 
 ### ISSUE-006：建立 29 个身体关节的 JointState 映射
 
@@ -145,27 +145,27 @@
 
 ### ISSUE-012：补齐左右 D405 相机安装和传感器 TF
 
-- 状态：`TODO`
+- 状态：`DONE`
 - 优先级：P1
 - 目标：补齐左右 `l_d405_camera_base`、`r_d405_camera_base` 及其 optical frame 到机器人主体的 TF。
 - 依赖：ISSUE-006、ISSUE-010
 - 修改边界：使用可追溯的安装标定外参，不凭空估计。
 - 验收标准：
-  - [ ] `base_link → l_d405_camera_base` 查询成功；
-  - [ ] `base_link → r_d405_camera_base` 查询成功；
-  - [ ] 彩色/深度图像 frame 与对应 TF 一致。
+  - [x] `base_link → l_d405_camera_base` 查询成功；
+  - [x] `base_link → r_d405_camera_base` 查询成功；
+  - [x] 彩色/深度图像 frame 与对应 TF 一致。
 
 ### ISSUE-013：连接并规范 cam_h/cam_l/cam_r 相机树
 
-- 状态：`TODO`
+- 状态：`DONE`
 - 优先级：P1
 - 目标：处理 bag 中 `cam_h_link`、`cam_l_link`、`cam_r_link` 三棵孤立相机树，确定它们与 URDF 相机 frame 的关系。
 - 依赖：ISSUE-007、ISSUE-009、ISSUE-012
 - 修改边界：外部静态 TF、frame/header 适配和回放配置。
 - 验收标准：
-  - [ ] 不再存在孤立相机根节点；
-  - [ ] 每套相机的安装外参来源明确；
-  - [ ] 所有 image/CameraInfo frame 可从机器人根节点查询。
+  - [x] 不再存在孤立相机根节点；
+  - [x] 每套相机的安装外参来源明确；
+  - [x] 所有 image/CameraInfo frame 可从机器人根节点查询。
 
 ### ISSUE-014：建立静态 TF 去重和完整回放验收
 

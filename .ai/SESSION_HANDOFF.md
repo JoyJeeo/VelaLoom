@@ -168,3 +168,24 @@
 - 未完成事项：ISSUE-017 尚未开始开发，没有创建特性分支，没有修改脚本或生成修复 bag，没有提交或推送。
 - 下一步：新对话先读取本文件、`.ai/TASK.md`、`.ai/PROGRESS.md` 和相关规范；用户明确要求开始后，检查无其他 `IN_PROGRESS` Issue，将 ISSUE-017 标为 `IN_PROGRESS`，创建 `codex/issue-017-interactive-tf-forest` 分支，按六个阶段逐段实现和测试，所有生成物仅写入 `test_output/issue-017/`。
 - 注意事项/风险：单位挂载表示调用者确认两 frame 原点和方向重合，脚本不能从拓扑自动恢复真实外参；不得把现有未跟踪日志或其他本地变更混入 ISSUE-017 交付。
+
+## SESSION-20260828-02
+
+- 日期：2026-08-28
+- 对话目标：实现 ISSUE-017 的通用交互式 TF 森林整理工具，连续优化 TF 日志来源标记和层级连接线，提交并推送全部仓库改动，最后校正部分历史 Issue 状态。
+- 已完成：
+  - ISSUE-017 已完成：`scripts/unify_rosbag_tf.py` 改为 bag-only 工具；移除 `--urdf`、`--keep-legacy-head-chain`、URDF fixed joint 和写死相机规则；支持完整森林打印、目标根选择、逐树挂载、`list/tree/abort`、dry-run、`Proceed [Y/n]:`、原子写出和回读验证。
+  - ISSUE-018 已完成：树节点和新增边的 `[D]`、`[S]`、`[B]` 来源标记统一移到名称末尾。
+  - ISSUE-019 已完成：完整森林和子树使用 `├──`、`└──`、`│` 显示明确层级关系。
+  - 真实 bag 交互选择 `odom` 为目标根，并加入 `zhead_2_link → cam_h_link`、`zarm_l7_link → cam_l_link`、`zarm_r7_link → cam_r_link` 三条调用者确认的单位静态边。
+  - 用户确认 ISSUE-005、ISSUE-012、ISSUE-013 已完成；已在 `.ai/TASK.md` 将其状态改为 `DONE` 并勾选验收项。
+- 技术细节：
+  - 环境：所有非 ROS 开发和验证使用 conda `VelaLoom`，未新增依赖，继续使用 `rosbags 0.11.5`。
+  - 真实输出：Git 忽略的 `test_output/issue-017/real-output.bag`，约 644 MB；149,771 条消息、1 条 latched `/tf_static`（35 条 transform）、56,292 条动态 TF、93,478 条非 TF，最终单根 `odom`、66 个 frame。
+  - 输入 bag SHA-256 保持 `8a527e4811fc0a078f107670dd35e3c7b35d45fe7de0d94b5ee88c69a8e542ed`；动态 TF 和非 TF 的原始字节、时间戳、顺序及连接元数据经回读验证保持不变。
+- 验证结果：ISSUE-017 至 ISSUE-019 最终均通过模块 18 项、全仓 39 项测试、全部脚本/测试 `py_compile` 和 `git diff --check`；真实 bag 的 `odom` 树只读预览确认连接线层级正确。
+- 提交和推送：`4f898e4 feat: make TF forest unification interactive`、`9c6a4c7 fix: move TF source markers after names`、`d78c6fa fix: render TF hierarchy with tree connectors`、`e6b3845 chore: archive session handoff and log` 等本地累计提交已推送到 `origin/main`；推送完成时本地和远端均为 `e6b3845`。
+- 当前未提交修改：`.ai/TASK.md` 中 ISSUE-005、ISSUE-012、ISSUE-013 的 `DONE` 状态与验收勾选，以及本次新增的交接记录；用户结束对话前尚未要求再次提交或推送。
+- 未完成事项：当前仍为 `TODO` 的功能 Issue 是 ISSUE-006、ISSUE-007、ISSUE-008、ISSUE-009、ISSUE-010、ISSUE-011、ISSUE-014；没有 `IN_PROGRESS` 或 `BLOCKED` Issue。
+- 下一步：新对话先核对 `git status`；如用户要求同步，提交并推送上述 Issue 状态与本交接记录。后续开发按串行规则从用户选定的剩余 Issue 开始。
+- 注意事项/风险：ISSUE-012 依赖 ISSUE-006/010，ISSUE-013 依赖 ISSUE-007/009/012，但用户已明确将 ISSUE-012 和 ISSUE-013 标为完成；保留这一状态事实，不自动回退。单位挂载表示坐标重合假设，不等价于从拓扑恢复真实标定外参。
