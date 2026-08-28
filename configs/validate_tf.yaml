@@ -1,0 +1,74 @@
+version: 1
+
+inputs:
+  bag: ../test_output/issue-020/01_dexhand_tf.bag
+  urdf: ../urdf_kuavo5/urdf/biped_s300053_foxglove.urdf
+
+topics:
+  sensor: /sensors_data_raw
+  tf: /tf
+  tf_static: /tf_static
+
+source:
+  position_field: joint_data.joint_q
+  velocity_field: joint_data.joint_v
+  timestamp_field: header.stamp
+
+expected_root: odom
+
+matching:
+  before_ms: 30.0
+  after_ms: 5.0
+
+policies:
+  missing_joint: interactive
+  extra_edge: warn
+  fixed_dynamic: warn
+  unsupported_source: warn
+
+thresholds:
+  quaternion_norm: 1.0e-6
+  translation_m: 1.0e-6
+  rotation_rad: 1.0e-5
+  angular_rms_rad: 1.0e-2
+  angular_max_rad: 2.0e-2
+  linear_rms_m: 1.0e-4
+  linear_max_m: 1.0e-3
+  angular_limit_warn_rad: 1.0e-6
+  angular_limit_fail_rad: 1.0e-2
+  linear_limit_warn_m: 1.0e-6
+  linear_limit_fail_m: 1.0e-3
+  continuity_gap_ms: null
+  angular_jump_rad: null
+  linear_jump_m: null
+
+joints:
+  0: leg_l1_joint
+  1: leg_l2_joint
+  2: leg_l3_joint
+  3: leg_l4_joint
+  4: leg_l5_joint
+  5: leg_l6_joint
+  6: leg_r1_joint
+  7: leg_r2_joint
+  8: leg_r3_joint
+  9: leg_r4_joint
+  10: leg_r5_joint
+  11: leg_r6_joint
+  12: waist_yaw_joint
+  13: zarm_l1_joint
+  14: zarm_l2_joint
+  15: zarm_l3_joint
+  16: zarm_l4_joint
+  17: zarm_l5_joint
+  18: zarm_l6_joint
+  19: zarm_l7_joint
+  20: zarm_r1_joint
+  21: zarm_r2_joint
+  22: zarm_r3_joint
+  23: zarm_r4_joint
+  24: zarm_r5_joint
+  25: zarm_r6_joint
+  26: zarm_r7_joint
+  27: zhead_1_joint
+  28: zhead_2_joint

@@ -9,6 +9,7 @@
 - **阶段化开发规范**：要求 Issue 按阶段实现、按阶段测试，当前阶段通过后自动推进下一阶段，禁止全部实现完成后才集中测试。
 - **ISSUE-003**：明确 `sync_frameid.py` 暂不支持通用 `/tf`、`/tf_static` frame 重写；遇到 TF 映射时安全失败并保持输入不变。
 - **ISSUE-004**：`sync_frameid.py` 的 `--map` 现在可一次接收多个连续映射，同时兼容重复 `--map` 写法，减少批量相机映射命令的重复书写。
+- **ISSUE-006**：新增只读 `validate_tf.py` 与版本化 YAML 配置，联合 rosbag、URDF 和传感器关节数组验证 TF 拓扑、发布语义、运动学、时间匹配、误差、限位及连续性，并输出可选审计 JSON。
 - **ISSUE-015**：新增 `unify_rosbag_tf.py`，从 URDF 补齐相机安装固定边，加入三条单位相机桥接，去重并重建 latched `/tf_static`，同时保持动态 `/tf`、非 TF 消息和输入 bag 不变。
 - **ISSUE-016**：新增独立的 `add_urdf_tf_static.py`，读取 URDF 全部 fixed joint，对静态、动态和多 parent 冲突要求交互或哈希绑定 decisions 明确选择，再原子写出唯一 latched `/tf_static`；避免自动猜测 frame 语义或误删动态 TF。
 - **ISSUE-017**：将 `unify_rosbag_tf.py` 修复为仅基于 bag 的交互式 TF 森林整理工具；移除 URDF 和写死相机规则，由调用者选择目标根与每棵树的挂载 link，并在写出前后执行完整拓扑和数据保真验证。

@@ -162,3 +162,17 @@
 - Foxglove：成功载入输出 bag；Transform Tree 显示从 `l_palm/r_palm` 到 20 个 prox/dist 手指 frame 的完整层级，3D 面板加载机器人模型。调用者已于 2026-08-29 确认左右手张合方向、部分闭合反馈、拖动和循环播放正确，身体、手臂和头部未受影响。
 - 最终自动门禁：模块 14 项和全仓 53 项测试通过；全部脚本/测试 `py_compile`、CLI `--help`、交付代码无 TODO/FIXME、真实输出独立回读和 `git diff --check` 通过。可选 `ruff` 未安装在项目环境，因此未新增依赖或将其列为门禁。
 - 依赖和产物：未新增依赖，继续使用 `VelaLoom` 的 `rosbags`；所有新夹具、缓存和真实输出均位于 `test_output/issue-020/`。已精确清理 `tmp/`、`pycache/` 和 `unit/`，仅保留 `01_dexhand_tf.bag`。自动化、ROS1 和 Foxglove 门禁全部通过，ISSUE-020 已标记为 `DONE`。
+
+## ISSUE-006 测试记录（2026-08-29）
+
+- 测试等级：L3。
+- 变更范围：新增 `scripts/validate_tf.py`、`configs/validate_tf.yaml` 和 `tests/test_validate_tf.py`；同步 README、DECISIONS、TASK、PROGRESS 和 CHANGELOG；未修改转换脚本、URDF 或输入 bag。
+- 阶段一至二：完成版本化配置、CLI 覆盖/来源、多值参数边界及全量 URDF 六类 joint 解析；11 项阶段测试覆盖缺省/显式配置、相对路径、非法 schema、link/joint 唯一性、axis/origin/limit、多 parent 和环路。
+- 阶段三：实现 sensor、`/tf`、`/tf_static`、connection/caller 的只读扫描和联合图检查；累计 16 项测试覆盖单根、多 parent、环路、静态重复/冲突、多个 caller 的正常与冲突发布及非有限数据。
+- 阶段四至五：实现 fixed/revolute/continuous/prismatic/planar/floating 几何、标量位置提取、单位分离限位、整组时间窗候选和源状态匹配；覆盖四元数正负等价、错误轴/平移、接反、索引交换、反号、度弧度、20 ms 延迟及超窗失败。
+- 阶段六：实现缺失 joint 逐项/批量交互、非 TTY 策略、额外边/fixed dynamic/多自由度源策略、连续性、JSON、strict 和退出码；模块累计 25 项测试通过。
+- 真实输入：`test_output/issue-020/01_dexhand_tf.bag`（656 MB，SHA-256 `c85308884b39e12d181bb528603303fd08656c623bf9a40d7faac7fa448b6913`）和 Foxglove URDF（SHA-256 `ba49bc66b484da17bee2a3b48444ada914e9252bf9b396009a36c13dcb9532e5`），前后哈希一致。
+- 真实结果：`PASS_WITH_WARNINGS`；唯一根 `odom`，977,840 条动态 transform、45 条静态 transform，74/75 个 URDF joint 有 TF；28,146 组完整主体 TF 状态全部匹配，0 组超窗失败，角度 RMS `1.1838e-05 rad`、最大误差 `0.00190113 rad`（`zhead_2_joint`）。
+- 已解释告警：`waist_camera` 采用 bag 的替代层级而缺少 URDF 直接边；21 条相机、雷达、`odom` 等 URDF 外扩展边；`zarm_r4_joint` 最大轻微限位超差 `0.00305414 rad`；TF/传感器采样差分得到的速度上限辅助指标。报告同时保留 49 个 TF joint 和 29 个 sensor joint 的独立连续性统计，位于 `test_output/issue-006/real-report.json`。
+- 最终门禁：模块 25 项、全仓 78 项测试通过；全部脚本/测试 `py_compile`、CLI `--help`、配置/真实 JSON 审计、交付代码无 TODO/FIXME 和 `git diff --check` 通过。项目环境未安装可选 `ruff`、`pyflakes` 或 `mypy`，未新增依赖或将其冒充为已执行门禁。
+- 依赖和边界：未新增依赖，使用 `VelaLoom` 已有 `rosbags` 与 PyYAML；未执行 ROS Noetic 命令，因为验证器直接只读 ROS1 bag 且不需要 ROS runtime。脚本未写出或修改任何 TF/bag/URDF。

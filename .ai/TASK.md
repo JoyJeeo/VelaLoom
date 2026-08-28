@@ -75,7 +75,7 @@
 
 ### ISSUE-006：开发通用 TF 数据验证脚本
 
-- 状态：`TODO`
+- 状态：`DONE`
 - 优先级：P0
 - 目标：新增只读脚本 `scripts/validate_tf.py`，联合 ROS1 bag、必选 URDF 和传感器关节状态验证 TF 的拓扑、发布语义、URDF 运动学一致性、源数据映射、时间延迟与动作连续性；脚本不修改 bag、URDF，不生成、删除或重建任何 TF。
 - 依赖：无；本 Issue 的验证器是通用工具，不把 29 个主体关节、当前 Kuavo URDF 或 ISSUE-006 的历史验收描述写死在程序逻辑中。
@@ -188,14 +188,14 @@
 
 #### 阶段门禁
 
-- [ ] 阶段一：冻结 CLI、默认配置 schema、参数优先级、多值参数边界、状态/退出码、交互策略和最小夹具；先完成参数与配置解析测试。
-- [ ] 阶段二：实现全量 URDF 解析、自身拓扑和 joint 类型合法性检查；立即覆盖 fixed/revolute/continuous/prismatic 以及非法模型单元测试。
-- [ ] 阶段三：实现 bag `/tf`、`/tf_static` 和 sensor topic 只读扫描、connection/callerid 记录及联合图检查；立即覆盖单根、多根、环、多 parent、重复和冲突。
-- [ ] 阶段四：实现 URDF origin/axis 与 fixed、revolute、continuous、prismatic TF 几何验证；立即覆盖 parent-child 接反、错误平移、错误轴、四元数等价和 limit。
-- [ ] 阶段五：实现数组映射、传感器字段读取、时间窗口候选、整体 RMS、最大单关节误差和降采样统计；立即覆盖索引交换、左右交换、反号、度/弧度、延迟、滤波和无匹配失败。
-- [ ] 阶段六：实现缺失 joint/额外边交互、非 TTY 策略、连续性/限位报告、JSON 和退出码；立即覆盖默认确认、批量决定、中止、strict 和无输出路径安全性。
-- [ ] 阶段七：在 `VelaLoom` 环境中对指定 `01.bag` 和 Foxglove URDF 做只读真实验证；确认输入哈希不变，预期结果为包含已解释告警的 `PASS_WITH_WARNINGS`，并人工复核完整报告。
-- [ ] 阶段八：运行模块测试、全仓回归、全部脚本/测试语法检查、`--help`、配置示例和 `git diff --check`；按 DOD 同步 README、DECISIONS、PROGRESS 和 CHANGELOG。
+- [x] 阶段一：冻结 CLI、默认配置 schema、参数优先级、多值参数边界、状态/退出码、交互策略和最小夹具；先完成参数与配置解析测试。
+- [x] 阶段二：实现全量 URDF 解析、自身拓扑和 joint 类型合法性检查；立即覆盖 fixed/revolute/continuous/prismatic 以及非法模型单元测试。
+- [x] 阶段三：实现 bag `/tf`、`/tf_static` 和 sensor topic 只读扫描、connection/callerid 记录及联合图检查；立即覆盖单根、多根、环、多 parent、重复和冲突。
+- [x] 阶段四：实现 URDF origin/axis 与 fixed、revolute、continuous、prismatic TF 几何验证；立即覆盖 parent-child 接反、错误平移、错误轴、四元数等价和 limit。
+- [x] 阶段五：实现数组映射、传感器字段读取、时间窗口候选、整体 RMS、最大单关节误差和降采样统计；立即覆盖索引交换、左右交换、反号、度/弧度、延迟、滤波和无匹配失败。
+- [x] 阶段六：实现缺失 joint/额外边交互、非 TTY 策略、连续性/限位报告、JSON 和退出码；立即覆盖默认确认、批量决定、中止、strict 和无输出路径安全性。
+- [x] 阶段七：在 `VelaLoom` 环境中对指定 `01.bag` 和 Foxglove URDF 做只读真实验证；确认输入哈希不变，预期结果为包含已解释告警的 `PASS_WITH_WARNINGS`，并人工复核完整报告。
+- [x] 阶段八：运行模块测试、全仓回归、全部脚本/测试语法检查、`--help`、配置示例和 `git diff --check`；按 DOD 同步 README、DECISIONS、PROGRESS 和 CHANGELOG。
 
 #### 自动化测试范围
 
@@ -210,16 +210,16 @@
 
 #### 验收标准
 
-- [ ] `scripts/validate_tf.py`、`configs/validate_tf.yaml` 和 `tests/test_validate_tf.py` 按上述边界交付，程序无机器人 joint 数量或几何硬编码。
-- [ ] 未传 `--config` 时默认读取 `configs/validate_tf.yaml`；CLI、配置和默认值优先级、实际生效配置及来源可验证。
-- [ ] 合并后缺少 bag 或 URDF 时在读取数据前失败；sensor topic 未配置时正确默认 `/sensors_data_raw`。
-- [ ] 所有多值参数使用单个参数名接收连续值，重复参数拒绝，CLI 列表整体替换配置列表。
-- [ ] URDF 全部 fixed 和 movable joint 均进入验证或明确的交互/策略结果；joint 数量和类型完全由 URDF 决定。
-- [ ] TF 拓扑、发布冲突、URDF parent-child/origin/axis/limit、传感器映射、时间延迟、RMS/最大误差和连续性均有自动化门禁。
-- [ ] 缺失 joint 可交互决定 Failure/Warning/Ignore/Abort，非 TTY 无确定策略时安全失败；额外边和其他语义异常独立报告。
-- [ ] 终端和可选 JSON 报告完整，状态、退出码、strict 和报告覆盖保护符合约定；未指定 JSON 时不创建文件。
-- [ ] 输入 bag 与 URDF SHA-256 不变；脚本不修改或生成 TF，不产生转换 bag。
-- [ ] 指定真实 `01.bag` 与 Foxglove URDF 的只读验证完成并保留可审计指标；模块测试、全仓回归、语法检查、`--help`、真实数据验证和 `git diff --check` 全部通过后才能标记 `DONE`。
+- [x] `scripts/validate_tf.py`、`configs/validate_tf.yaml` 和 `tests/test_validate_tf.py` 按上述边界交付，程序无机器人 joint 数量或几何硬编码。
+- [x] 未传 `--config` 时默认读取 `configs/validate_tf.yaml`；CLI、配置和默认值优先级、实际生效配置及来源可验证。
+- [x] 合并后缺少 bag 或 URDF 时在读取数据前失败；sensor topic 未配置时正确默认 `/sensors_data_raw`。
+- [x] 所有多值参数使用单个参数名接收连续值，重复参数拒绝，CLI 列表整体替换配置列表。
+- [x] URDF 全部 fixed 和 movable joint 均进入验证或明确的交互/策略结果；joint 数量和类型完全由 URDF 决定。
+- [x] TF 拓扑、发布冲突、URDF parent-child/origin/axis/limit、传感器映射、时间延迟、RMS/最大误差和连续性均有自动化门禁。
+- [x] 缺失 joint 可交互决定 Failure/Warning/Ignore/Abort，非 TTY 无确定策略时安全失败；额外边和其他语义异常独立报告。
+- [x] 终端和可选 JSON 报告完整，状态、退出码、strict 和报告覆盖保护符合约定；未指定 JSON 时不创建文件。
+- [x] 输入 bag 与 URDF SHA-256 不变；脚本不修改或生成 TF，不产生转换 bag。
+- [x] 指定真实 `01.bag` 与 Foxglove URDF 的只读验证完成并保留可审计指标；模块测试、全仓回归、语法检查、`--help`、真实数据验证和 `git diff --check` 全部通过后才能标记 `DONE`。
 
 ### ISSUE-007：处理头部相机 frame 命名和层级
 

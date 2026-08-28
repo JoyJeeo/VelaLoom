@@ -171,3 +171,52 @@ conda run -n VelaLoom python scripts/add_dexhand_tf.py \
 时间，header 时间使用反馈 header，零时间回退到记录时间。目标 child 已有 TF、手掌不可从
 `base_link` 到达、状态缺失/重复/非有限、TF 多 parent 或环路时会在创建输出前失败。写后回读
 还会验证原始记录的序列化字节、时间戳、顺序和连接元数据没有变化。
+
+## 只读验证 rosbag、URDF 与关节状态的一致性
+
+`scripts/validate_tf.py` 是通用只读验证器。它联合扫描单个 ROS1 bag 的 `/tf`、`/tf_static`、
+传感器关节数组与必选 URDF，检查 TF 单根/环路/多 parent、静动态发布冲突、caller 诊断、URDF
+全部 joint 的 parent/child/origin/axis/limit、源数组映射、时间延迟、整体 RMS、最大单关节误差、
+连续性与速度辅助指标。脚本不修改输入，不创建或重建任何 TF，也不生成转换 bag。
+
+默认读取 `configs/validate_tf.yaml`，当前基线是 `test_output/issue-020/01_dexhand_tf.bag` 与
+Foxglove URDF。可直接执行；非 TTY 环境若存在缺失 joint，必须显式给出策略：
+
+```bash
+conda run -n VelaLoom python scripts/validate_tf.py \
+  --missing-joint-policy warn \
+  --json-out test_output/issue-006/report.json
+```
+
+也可完全覆盖输入、topic、字段和数组索引映射。`--joint-map` 只能出现一次，随后连续列出全部
+`INDEX=JOINT_NAME`，遇到下一个 `--xxx` 选项结束；CLI 列表整体替换配置列表：
+
+```bash
+conda run -n VelaLoom python scripts/validate_tf.py \
+  --bag path/to/input.bag \
+  --urdf path/to/robot.urdf \
+  --sensor-topic /sensors_data_raw \
+  --position-field joint_data.joint_q \
+  --velocity-field joint_data.joint_v \
+  --timestamp-field header.stamp \
+  --expected-root odom \
+  --joint-map 0=joint_a 1=joint_b \
+  --missing-joint-policy fail
+```
+
+参数优先级为 `CLI > 已加载 YAML > 程序默认值`。CLI 相对路径相对当前目录解析，YAML 相对路径
+相对配置文件目录解析；终端报告会打印每个生效值及来源。缺失 joint 默认在 TTY 中逐项选择
+Failure/Warning/Ignore/Abort，并支持 FA/WA/IA 批量应用；额外边与 fixed joint 动态发布默认告警。
+planar/floating joint 会验证其允许运动空间，但不接受标量数组映射，无法证明其数据源时明确告警。
+
+默认时间窗口为 TF 前 `30 ms`、后 `5 ms`。几何容差为 `1e-6 m` 和 `1e-5 rad`；四元数范数
+容差 `1e-6`。源匹配的角度 RMS/最大门限为 `0.01/0.02 rad`，线性 RMS/最大门限为
+`0.0001/0.001 m`。限位按单位分开：角度告警/失败容差为 `1e-6/0.01 rad`，线性为
+`1e-6/0.001 m`。连续性默认只报告 P50/P99/最大间隔、跳变与速度，不使用机器人相关的通用硬
+阈值；所有默认值均可在 YAML 的 `matching` 和 `thresholds` 中调整。角度与线性 RMS 分开报告，
+同时提供按各自最大门限归一化的无量纲整体 RMS，避免直接混合 rad 与 m。
+
+最终状态为 `PASS`、`PASS_WITH_WARNINGS` 或 `FAIL`；`--strict` 会把任何告警提升为失败。退出码
+`0/1/2/3` 分别表示通过、数据验收失败、参数/配置/结构错误、调用者中止。只有指定 `--json-out`
+时才写结构化报告，且默认拒绝覆盖已有文件；报告包含输入前后 SHA-256、生效配置、完整指标、
+策略决定以及可证事实与告警。
