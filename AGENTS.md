@@ -8,6 +8,14 @@
 - ROS command outputs must be written through that mounted path so bags, logs, and generated files remain in the host workspace. Do not store required deliverables only in the container filesystem.
 - Do not install project dependencies or execute non-ROS project tooling in `base`, another conda environment, or the system Python environment.
 
+# Issue development authorization gate
+
+- When the user asks to "start developing an Issue" (including equivalent wording), the first response must identify and ask the user to confirm every unresolved requirement, decision, prerequisite, risk, and permission needed for the work.
+- Treat this confirmation as a mandatory gate. Until the user has answered the pending questions and explicitly authorized formal development to begin, do not modify the repository in any way.
+- Before authorization, repository work is limited to read-only inspection needed to understand the Issue and prepare the confirmation questions. Do not create, edit, delete, move, or format files; install or update dependencies; run code generators or commands that write outputs; or perform Git operations that change repository or working-tree state.
+- Do not interpret the initial request to start Issue development as authorization by itself. Authorization must be given after the confirmation questions have been presented and resolved, and applies only to the confirmed Issue scope.
+- If a material ambiguity, new permission requirement, or scope change appears after development begins, pause the affected work, ask for confirmation, and wait for explicit authorization before proceeding with it.
+
 # Project layout
 
 - Keep development code, scripts, tests, and other executable tooling outside the `urdf` and `rosbag` directories.
