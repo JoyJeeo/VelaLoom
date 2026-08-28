@@ -79,7 +79,7 @@
 ## D012：全量 URDF fixed joint 写入必须由输入绑定决策驱动
 
 - 日期：2026-08-27
-- 决策：`add_urdf_fixed_tf.py` 独立读取 URDF 全部直接 fixed joint；无冲突边自动补齐，任何静态位姿、不同 parent 或动态 child 冲突都必须由调用者交互选择，或由同时绑定 bag/URDF SHA-256 和完整候选集合的 decisions JSON 重放。
+- 决策：`add_urdf_tf_static.py` 独立读取 URDF 全部直接 fixed joint；无冲突边自动补齐，任何静态位姿、不同 parent 或动态 child 冲突都必须由调用者交互选择，或由同时绑定 bag/URDF SHA-256 和完整候选集合的 decisions JSON 重放。
 - 交互规则：冲突选择没有默认值；删除动态 transform 需要再次完整输入 `YES`；只有所有冲突解决后的最终写出提示使用 `[Y/n]`，Enter 默认写出。非交互写出必须同时具备完整 `--decisions-in` 和 `--yes`。
 - 输出规则：最终静态边规范化为一条 latched `/tf_static`，每个 child 只有一个 parent；未经明确选择删除的动态 `/tf` 和全部非 TF 消息保持原始字节、时间戳与连接元数据；写出回读通过后才原子替换目标。
 - 边界：本工具不依赖 ISSUE-015，不加入三条相机单位桥接，不处理可动 joint，也不自动合并 `head_rader`/`head_radar` 等相似名称。

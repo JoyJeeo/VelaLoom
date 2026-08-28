@@ -97,14 +97,14 @@ frame 的原点和方向重合；脚本只验证拓扑，不能从 TF 森林推�
 
 ## 将 URDF 全部 fixed joint 写入 rosbag
 
-`scripts/add_urdf_fixed_tf.py` 是独立的交互式转换工具。它读取传入 URDF 中全部直接
+`scripts/add_urdf_tf_static.py` 是独立的交互式转换工具。它读取传入 URDF 中全部直接
 `type="fixed"` joint，扫描输入 ROS1 bag 的 `/tf_static` 和 `/tf`，把 fixed joint 分为已存在、
 缺失和冲突三类。输入 URDF 与 bag 始终只读；输出必须是另一个 `.bag` 文件。
 
 先使用 dry-run 查看分类和冲突，不会交互、创建输出或写 decisions 文件：
 
 ```bash
-conda run -n VelaLoom python scripts/add_urdf_fixed_tf.py \
+conda run -n VelaLoom python scripts/add_urdf_tf_static.py \
   --input rosbag/<input>.bag \
   --output test_output/issue-016/output.bag \
   --urdf urdf_kuavo5/urdf/biped_s300053_foxglove.urdf \
@@ -116,7 +116,7 @@ conda run -n VelaLoom python scripts/add_urdf_fixed_tf.py \
 没有默认值。只有最终提示 `Proceed with writing OUTPUT.bag? [Y/n]` 默认 `Y`：
 
 ```bash
-conda run --no-capture-output -n VelaLoom python scripts/add_urdf_fixed_tf.py \
+conda run --no-capture-output -n VelaLoom python scripts/add_urdf_tf_static.py \
   --input rosbag/<input>.bag \
   --output test_output/issue-016/output.bag \
   --urdf urdf_kuavo5/urdf/biped_s300053_foxglove.urdf \
@@ -128,7 +128,7 @@ conda run --no-capture-output -n VelaLoom python scripts/add_urdf_fixed_tf.py \
 `--yes`，它只能跳过最终写出确认，不能替代未解决的冲突：
 
 ```bash
-conda run -n VelaLoom python scripts/add_urdf_fixed_tf.py \
+conda run -n VelaLoom python scripts/add_urdf_tf_static.py \
   --input rosbag/<input>.bag \
   --output test_output/issue-016/output.bag \
   --urdf urdf_kuavo5/urdf/biped_s300053_foxglove.urdf \

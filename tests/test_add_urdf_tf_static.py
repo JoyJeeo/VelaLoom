@@ -17,7 +17,7 @@ from rosbags.highlevel import AnyReader  # noqa: E402
 from rosbags.rosbag1 import Writer  # noqa: E402
 from rosbags.typesys import Stores, get_types_from_msg, get_typestore  # noqa: E402
 
-from add_urdf_fixed_tf import (  # noqa: E402
+from add_urdf_tf_static import (  # noqa: E402
     UserAbort,
     analyze_inputs,
     build_output_plan,
@@ -31,7 +31,7 @@ from add_urdf_fixed_tf import (  # noqa: E402
 )
 
 
-TEST_OUTPUT_ROOT = ROOT / "test_output/test_add_urdf_fixed_tf"
+TEST_OUTPUT_ROOT = ROOT / "test_output/test_add_urdf_tf_static"
 
 
 def _tf_message(typestore, transforms):

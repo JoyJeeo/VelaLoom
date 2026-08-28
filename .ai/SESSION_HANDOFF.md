@@ -115,7 +115,7 @@
   - 文件：新增 `scripts/unify_rosbag_tf.py`、`tests/test_unify_rosbag_tf.py`；更新 `README.md`、`CHANGELOG.md`、`.ai/*`、`AGENTS.md`、`.gitignore`；删除重复文件 `urdf_kuavo5/urdf/biped_s300053_foxglove_副本.urdf`；提交 3 个 `logs/gym-mcp.*.log.gz` 压缩日志。
   - Issue：`ISSUE-015` 已实现并标记为 `DONE`；新增 `ISSUE-016：将 URDF 全部 fixed joint 交互式写入 rosbag`，状态为 `TODO`，本次未实现该脚本。
   - ISSUE-015 行为：保持动态 `/tf` 和非 TF 消息原始序列化内容，去重并重建单条 latched `/tf_static`，从 URDF 读取 7 条相机 fixed joint，加入三条 `cam_h/l/r` 单位桥接，执行旧头部链引用、位姿冲突、多 parent 和唯一 `odom` 根检查。
-  - ISSUE-016 方案：目标脚本为 `scripts/add_urdf_fixed_tf.py`，与已有脚本无导入或相机桥接依赖；读取 URDF 全部 fixed joint；冲突由调用者交互选择；最终提示为 `Proceed with writing OUTPUT.bag? [Y/n]` 且 Enter 默认 `Y`；冲突选择没有默认值；支持 decisions JSON 保存和校验重放。
+  - ISSUE-016 方案：目标脚本为 `scripts/add_urdf_tf_static.py`，与已有脚本无导入或相机桥接依赖；读取 URDF 全部 fixed joint；冲突由调用者交互选择；最终提示为 `Proceed with writing OUTPUT.bag? [Y/n]` 且 Enter 默认 `Y`；冲突选择没有默认值；支持 decisions JSON 保存和校验重放。
   - 测试输出规范：所有测试夹具、临时 bag、转换输出、日志、报告等统一写入仓库根目录 `test_output/`，按 Issue/模块分子目录；`/test_output/` 已加入 `.gitignore`；禁止未来测试使用系统 `/tmp` 或输入数据目录。
 - 技术细节：
   - 运行环境：非 ROS 工具和测试使用 conda `VelaLoom`；依赖继续使用 `rosbags 0.11.5`。
@@ -135,7 +135,7 @@
 - 日期：2026-08-27
 - 对话目标：开始并完成 ISSUE-016，将 URDF 全部 fixed joint 经调用者冲突决策后写入独立 ROS1 bag。
 - 已完成：
-  - 文件：新增 `scripts/add_urdf_fixed_tf.py`、`tests/test_add_urdf_fixed_tf.py`；更新 `README.md`、`CHANGELOG.md`、`.ai/TASK.md`、`.ai/PROGRESS.md` 和 `.ai/DECISIONS.md`。
+  - 文件：新增 `scripts/add_urdf_tf_static.py`、`tests/test_add_urdf_tf_static.py`；更新 `README.md`、`CHANGELOG.md`、`.ai/TASK.md`、`.ai/PROGRESS.md` 和 `.ai/DECISIONS.md`。
   - Issue：`ISSUE-016` 已标记为 `DONE`，六个阶段和全部验收标准均通过。
   - 行为/接口：支持 `--input`、`--output`、`--urdf`、`--dry-run`、`--overwrite`、`--decisions-in`、`--decisions-out` 和 `--yes`；冲突选择无默认值，动态删除需完整输入 `YES`，最终 `[Y/n]` 默认写出；输出为单条 latched `/tf_static` 并在回读通过后原子替换。
 - 技术细节：

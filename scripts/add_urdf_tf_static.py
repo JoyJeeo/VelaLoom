@@ -11,7 +11,7 @@ Output:
     A distinct ROS1 ``.bag`` plus an optional decisions JSON.  The input bag
     and URDF are never modified.
 Example:
-    ``python scripts/add_urdf_fixed_tf.py --input input.bag --output output.bag --urdf robot.urdf``
+    ``python scripts/add_urdf_tf_static.py --input input.bag --output output.bag --urdf robot.urdf``
 """
 
 from __future__ import annotations
