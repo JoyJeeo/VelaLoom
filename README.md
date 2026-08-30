@@ -172,6 +172,36 @@ conda run -n VelaLoom python scripts/add_dexhand_tf.py \
 `base_link` 到达、状态缺失/重复/非有限、TF 多 parent 或环路时会在创建输出前失败。写后回读
 还会验证原始记录的序列化字节、时间戳、顺序和连接元数据没有变化。
 
+## 生成可配置的水平合成轨迹
+
+`scripts/loom_xy_motion.py` 把动态 `/tf` 中已有的 `odom → base_link` 水平 `x/y` 替换为一条
+直线 minimum-jerk 轨迹，用于在 Foxglove 中演示指定方向、距离和时间范围的平滑移动。输入 bag
+始终只读；输出不新增消息、topic、connection 或 TF 边，并保留目标变换的 `z`、旋转和时间戳，
+以及所有非目标记录。
+
+六个业务参数均为必传项。方向相对第一帧 `base_link` 姿态定义：`robot-up/down` 分别是自身
+前/后，`robot-left/right` 分别是自身左/右；脚本只用第一帧 yaw 将该方向固定转换到 `odom`，
+因此不会随机器人转向产生弯曲轨迹。时间可写为十进制秒、`MM:SS` 或 `HH:MM:SS`：
+
+```bash
+conda run -n VelaLoom python scripts/loom_xy_motion.py \
+  --input test_output/issue-020/01_dexhand_tf.bag \
+  --output test_output/issue-021/01_dexhand_tf_xy_motion.bag \
+  --direction robot-up \
+  --distance-m 1.0 \
+  --start-s 00:02 \
+  --end-s 00:12 \
+  --dry-run
+```
+
+去掉 `--dry-run` 后，脚本打印输入哈希、目标样本、方向向量、起终点和理论最大速度，再以
+`Proceed [Y/n]:` 确认写出。若输出已存在，TTY 中可只切换目录或只重命名并持续处理二次冲突；
+非 TTY 会要求重新指定输出。工具没有 `--overwrite`：写后回读会逐记录验证连接、计数、轨迹、
+非目标字节和 TF 拓扑，再通过不覆盖的原子发布生成结果。
+
+该轨迹是明确的可视化合成数据，会覆盖原始根节点水平运动并可能产生脚底滑动。输出不得用于
+定位、控制、训练或机器人性能定量评估；需要接触一致运动时应使用步态重定向和全身 IK 方案。
+
 ## 只读验证 rosbag、URDF 与关节状态的一致性
 
 `scripts/validate_tf.py` 是通用只读验证器。它联合扫描单个 ROS1 bag 的 `/tf`、`/tf_static`、

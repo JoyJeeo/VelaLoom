@@ -177,7 +177,7 @@
 - 最终门禁：模块 25 项、全仓 78 项测试通过；全部脚本/测试 `py_compile`、CLI `--help`、配置/真实 JSON 审计、交付代码无 TODO/FIXME 和 `git diff --check` 通过。项目环境未安装可选 `ruff`、`pyflakes` 或 `mypy`，未新增依赖或将其冒充为已执行门禁。
 - 依赖和边界：未新增依赖，使用 `VelaLoom` 已有 `rosbags` 与 PyYAML；未执行 ROS Noetic 命令，因为验证器直接只读 ROS1 bag 且不需要 ROS runtime。脚本未写出或修改任何 TF/bag/URDF。
 
-## ISSUE-021 研究与一次性输出记录（2026-08-29）
+## ISSUE-021 前期研究与一次性输出记录（2026-08-29）
 
 - 研究边界：未编写或修改生产脚本；先只读分析 `test_output/issue-020/01_dexhand_tf.bag`，用户确认研究结论后另行明确授权生成一次性可视化派生 bag，全部产物位于 `test_output/issue-021/`。
 - 输入基线：SHA-256 `c85308884b39e12d181bb528603303fd08656c623bf9a40d7faac7fa448b6913`，时长 34.081065 秒，`odom → base_link` 与完整主体 TF 共 28,146 组配对样本；原始水平范围约为 `x=0.191766 m`、`y=0.195831 m`。
@@ -189,4 +189,17 @@
 - 一次性输出：`test_output/issue-021/01_dexhand_tf_trend3x.bag`，656.4 MB，SHA-256 `3cbebb11095265158eaa2de259a95277f9244407e01733270abfda8b4ec4b0bf`。共 156,444 条消息，只重写 28,146 条 `odom → base_link` 的水平 `x/y`；非目标记录流、连接元数据、topic 数量、记录/header 时间、`z` 和旋转保持一致，公式最大误差为 0，残差保持误差 `8.33e-17 m`。
 - 输出指标：水平包围框对角线由 0.274087 m 增至 0.528841 m（1.92946 倍），根加速度 P95 为原始 0.998382 倍，支撑脚代理 0.25 秒漂移 P95 为 24.3019 mm，通过 1.8 倍可见度、1.10 倍加速度和 25 mm 脚滑门槛。
 - 验证：`rosbags` 写后回读与完整记录保真通过；通用 `validate_tf.py` 为 `PASS_WITH_WARNINGS`，唯一根 `odom`，28,146 组主体 TF 全部匹配源状态；`ros1_noetic` 容器原生 `rosbag info` 成功读取 156,444 条消息、62,965 条 `/tf` 和 1 条 `/tf_static`。输入 SHA-256 前后保持 `c85308884b39e12d181bb528603303fd08656c623bf9a40d7faac7fa448b6913`。
-- 研究报告：`test_output/issue-021/research-report.md`；生成报告为 `bag-generation-report.json`，TF 报告为 `tf-validation.json`，另有完整指标和三张对比图。用户已确认研究结论并授权本次输出，ISSUE-021 标记为 `DONE`；任何可复用脚本、批量转换或物理接触一致重定向仍需新 Issue 和独立授权。
+- 研究报告：`test_output/issue-021/research-report.md`；生成报告为 `bag-generation-report.json`，TF 报告为 `tf-validation.json`，另有完整指标和三张对比图。用户已确认该前期研究和一次性输出；可复用脚本当时尚未开发，后续仍需独立开发授权。
+
+## ISSUE-021 可配置水平合成轨迹工具（2026-08-30）
+
+- 测试等级：L3。新增独立模块 `scripts/loom_xy_motion.py` 和 `tests/test_loom_xy_motion.py`；同步 README、DECISIONS、TASK、PROGRESS 和 CHANGELOG；未修改其他转换脚本、URDF 或输入 bag。
+- 阶段一：先冻结六个必传参数、三种时间格式、四个机器人相对方向、首帧 yaw 和 minimum-jerk 公式；6 项接口与数学测试通过。
+- 阶段二至三：实现输入哈希、唯一目标连接、有限值、严格递增时间和单根拓扑只读扫描，以及换目录/重命名冲突循环、非 TTY 拒绝、EOF/取消、默认 `Y` 和零写入 dry-run；累计 15 项测试通过。
+- 阶段四：实现原连接顺序流式复制、只重写目标 `x/y`、逐记录输入/输出联合回读、同目录唯一临时 bag、验证失败精确清理和基于硬链接的无覆盖原子发布；18 项模块测试覆盖目标字段保真、非目标原始字节、发布竞态及失败路径。
+- 真实参数：基线 `test_output/issue-020/01_dexhand_tf.bag`，`robot-up`、`1.0 m`、`2.0–12.0 s`。首帧方向在 `odom` 中为 `(0.7391498542, -0.6735410106)`，起点 `(-0.0177784518, -0.0116624318)`，终点 `(0.7213714024, -0.6852034425)`，理论最大速度 `0.1875 m/s`。
+- 真实输出：`test_output/issue-021/01_dexhand_tf_xy_motion.bag`，688,287,494 bytes，SHA-256 `8c8dabaa5c2d76ded9a22363b6e72bfc5fe72f4ade4878f8c3f91be4a08277a7`；156,444 条消息，只重写 28,146 个目标 transform，输入 SHA-256 保持 `c85308884b39e12d181bb528603303fd08656c623bf9a40d7faac7fa448b6913`。
+- 交叉验证：`validate_tf.py` 输出 `test_output/issue-021/xy-motion-tf-validation.json`，状态 `PASS_WITH_WARNINGS`，唯一根 `odom`，28,146 组主体 TF 全部匹配源状态；ROS1 原生 `rosbag info` 成功读取 656.4 MB、156,444 条消息、62,965 条 `/tf` 和 1 条 `/tf_static`。
+- Foxglove：新输出作为独立标签成功加载，沿用 `odom` Fixed/Display frame 和现有 URDF；3D 机器人、身体、双手及三路相机正常显示和播放。自动轨迹回读同时证明方向投影单调、横向误差不超过 `1e-9 m`、起终点保持且无回环。
+- 最终门禁：模块 18 项、全仓 96 项测试通过；全部脚本/测试 `py_compile`、`loom_xy_motion.py --help` 和 `git diff --check` 通过。未新增依赖，使用现有 `rosbags 0.11.5`；仅保留真实输出与 TF JSON 报告，阶段临时目录和单元测试夹具在交付前精确清理。
+- 边界：输出是可视化合成数据，覆盖原始根节点水平运动并可能产生脚底滑动；不用于定位、控制、训练或性能定量评估。批处理、里程计恢复、marker、接触重建和 IK 不在本 Issue 范围。
