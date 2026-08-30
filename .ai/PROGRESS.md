@@ -176,3 +176,17 @@
 - 已解释告警：`waist_camera` 采用 bag 的替代层级而缺少 URDF 直接边；21 条相机、雷达、`odom` 等 URDF 外扩展边；`zarm_r4_joint` 最大轻微限位超差 `0.00305414 rad`；TF/传感器采样差分得到的速度上限辅助指标。报告同时保留 49 个 TF joint 和 29 个 sensor joint 的独立连续性统计，位于 `test_output/issue-006/real-report.json`。
 - 最终门禁：模块 25 项、全仓 78 项测试通过；全部脚本/测试 `py_compile`、CLI `--help`、配置/真实 JSON 审计、交付代码无 TODO/FIXME 和 `git diff --check` 通过。项目环境未安装可选 `ruff`、`pyflakes` 或 `mypy`，未新增依赖或将其冒充为已执行门禁。
 - 依赖和边界：未新增依赖，使用 `VelaLoom` 已有 `rosbags` 与 PyYAML；未执行 ROS Noetic 命令，因为验证器直接只读 ROS1 bag 且不需要 ROS runtime。脚本未写出或修改任何 TF/bag/URDF。
+
+## ISSUE-021 研究与一次性输出记录（2026-08-29）
+
+- 研究边界：未编写或修改生产脚本；先只读分析 `test_output/issue-020/01_dexhand_tf.bag`，用户确认研究结论后另行明确授权生成一次性可视化派生 bag，全部产物位于 `test_output/issue-021/`。
+- 输入基线：SHA-256 `c85308884b39e12d181bb528603303fd08656c623bf9a40d7faac7fa448b6913`，时长 34.081065 秒，`odom → base_link` 与完整主体 TF 共 28,146 组配对样本；原始水平范围约为 `x=0.191766 m`、`y=0.195831 m`。
+- 频率结论：0.05–0.35 Hz 主要承载整体水平移动，约 1.0–1.1 Hz 存在明显步态成分；直接把原始坐标乘 3 会同步把低频趋势、步态残差和估计噪声放大。
+- 对比结果：原始坐标直接 3 倍使水平可见范围、残差 RMS 和根加速度 P95 均约为原始 3 倍，支撑脚代理 0.25 秒漂移 P95 从 1.78 mm 增至 54.58 mm。平滑趋势 3 倍可保持根加速度基本不变，但仍会增加世界坐标中的脚滑。
+- 当前推荐：100 Hz 等间隔分析、0.11 秒中值预处理、三阶零相位 Butterworth `0.25 Hz` 趋势、固定 `s=3`；只改变 `odom → base_link` 的水平 `x/y`，保留 `z`、旋转及所有后代相对 TF。该候选水平包围框对角线为原始 1.93 倍，根加速度 P95 为原始 0.998 倍，支撑脚代理漂移 P95 为 24.30 mm/0.25 秒。
+- Foxglove 结论：双 3D 面板、`odom` Fixed/Display frame、俯视/斜侧视角、网格、慢放、循环和测量可在不改数据时使用；轨迹尾迹、位移箭头和初始残影需要 layout-local User Script/marker topic 或后续派生数据。零相位滤波需要整段数据，不适合在 User Script 中做无延迟实时等价实现。
+- 风险与停止条件：3 倍根趋势无法保持真实支撑脚固定，只能作为明确标记的可视化增强；若 25 mm/0.25 秒脚滑门槛不可接受，应退回纯视觉增强。若要求接触物理一致性，则转入 ISSUE-022 的支撑约束和全身 IK，不在 ISSUE-021 扩张范围。
+- 一次性输出：`test_output/issue-021/01_dexhand_tf_trend3x.bag`，656.4 MB，SHA-256 `3cbebb11095265158eaa2de259a95277f9244407e01733270abfda8b4ec4b0bf`。共 156,444 条消息，只重写 28,146 条 `odom → base_link` 的水平 `x/y`；非目标记录流、连接元数据、topic 数量、记录/header 时间、`z` 和旋转保持一致，公式最大误差为 0，残差保持误差 `8.33e-17 m`。
+- 输出指标：水平包围框对角线由 0.274087 m 增至 0.528841 m（1.92946 倍），根加速度 P95 为原始 0.998382 倍，支撑脚代理 0.25 秒漂移 P95 为 24.3019 mm，通过 1.8 倍可见度、1.10 倍加速度和 25 mm 脚滑门槛。
+- 验证：`rosbags` 写后回读与完整记录保真通过；通用 `validate_tf.py` 为 `PASS_WITH_WARNINGS`，唯一根 `odom`，28,146 组主体 TF 全部匹配源状态；`ros1_noetic` 容器原生 `rosbag info` 成功读取 156,444 条消息、62,965 条 `/tf` 和 1 条 `/tf_static`。输入 SHA-256 前后保持 `c85308884b39e12d181bb528603303fd08656c623bf9a40d7faac7fa448b6913`。
+- 研究报告：`test_output/issue-021/research-report.md`；生成报告为 `bag-generation-report.json`，TF 报告为 `tf-validation.json`，另有完整指标和三张对比图。用户已确认研究结论并授权本次输出，ISSUE-021 标记为 `DONE`；任何可复用脚本、批量转换或物理接触一致重定向仍需新 Issue 和独立授权。
